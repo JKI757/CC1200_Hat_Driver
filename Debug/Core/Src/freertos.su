@@ -1,0 +1,7 @@
+../Core/Inc/globals.h:84:12:Radio* Globals::getRadio()	16	static
+../Core/Src/freertos.cpp:142:6:void MX_FREERTOS_Init(Globals*)	16	static
+../Core/Src/freertos.cpp:219:6:void StartDefaultTask(Globals*)	32	static
+../Core/Src/freertos.cpp:267:6:void StartTask02(Globals*)	16	static
+../Core/Src/freertos.cpp:287:6:void StartTask03(Globals*)	24	static
+../Core/Src/freertos.cpp:317:6:void StartTask04(Globals*)	24	static
+../Core/Src/freertos.cpp:341:6:void Callback01(void*)	16	static

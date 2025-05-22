@@ -1,0 +1,60 @@
+# CC1200 Radio HAT Implementation Plan
+
+## Phase 1: CC1200 Driver Integration
+1. Create a Radio class that will encapsulate the CC1200 driver
+   - Instantiate the CC1200 driver with proper GPIO and SPI configuration
+   - Configure the CC1200 for 4FSK modulation
+   - Set up infinite read/write mode
+   - Configure DMA for data transfer
+   - Implement interrupt handlers for GPIO pins
+
+2. Update the Globals class
+   - Add the Radio instance to the Globals class
+   - Provide access methods for the Radio
+
+## Phase 2: FreeRTOS Task Implementation
+1. Modify existing FreeRTOS tasks
+   - Task 1 (defaultTask): Handle USB VCP initialization and menu interface
+   - Task 2: Watchdog refresh (already implemented)
+   - Task 3: Radio transmission handling
+   - Task 4: Radio reception handling
+
+2. Implement interrupt handlers
+   - Set up GPIO interrupts for CC1200 pins
+   - Create callback functions to handle radio events
+
+## Phase 3: USB VCP Menu Interface
+1. Implement USB VCP communication
+   - Set up USB CDC interface
+   - Create a command parser
+   - Implement command handlers
+
+2. Create menu system
+   - Display welcome message and available commands
+   - Implement commands:
+     - Transmit data
+     - Receive data
+     - Configure radio parameters
+     - Display status
+     - Help menu
+
+## Implementation Details
+
+### CC1200 Configuration
+- 4FSK modulation
+- Infinite read/write mode
+- DMA for data transfer
+- GPIO configuration:
+  - _CC_RST_Pin (PB0): Reset pin
+  - CC_GPIO0_Pin (PB12): GPIO0 for interrupt/status
+  - CC_GPIO2_Pin (PB13): GPIO2 for interrupt/status
+  - CC_GPIO3_Pin (PB14): GPIO3 for interrupt/status
+
+### SPI Configuration
+- Using hspi1 for communication with CC1200
+- DMA already configured for SPI1
+
+### USB VCP Interface
+- Implement command parsing
+- Display received data
+- Allow user to send data for transmission
