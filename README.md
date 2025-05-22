@@ -94,6 +94,10 @@ The project is configured for the STM32CubeIDE. To build and flash:
 2. The welcome message and command prompt will appear
 3. Use the available commands to control the radio
 
+## Credits
+
+The CC1200 driver files (`CC1200_HAL.cpp`, `CC1200_HAL.h`, and `CC1200Bits.h`) are adapted from work by Jamie Smith @ USC Rocket Propulsion Lab, from the repository at https://github.com/USCRPL/cc1200-driver/tree/master, under the Apache License 2.0.
+
 ## License
 
 This project is licensed under the Apache License 2.0 - see the LICENSE file for details.
