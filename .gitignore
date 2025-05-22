@@ -1,0 +1,98 @@
+# STM32CubeIDE specific
+.settings/
+.metadata/
+.project
+.cproject
+.mxproject
+.vscode/
+*.launch
+
+# Build directories
+/Debug/
+/Release/
+/build/
+
+# Object files
+*.o
+*.ko
+*.obj
+*.elf
+
+# Linker output
+*.ilk
+*.map
+*.exp
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Libraries
+*.lib
+*.a
+*.la
+*.lo
+
+# Shared objects (inc. Windows DLLs)
+*.dll
+*.so
+*.so.*
+*.dylib
+
+# Executables
+*.exe
+*.out
+*.app
+*.i*86
+*.x86_64
+*.hex
+*.bin
+
+# Debug files
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# Kernel Module Compile Results
+*.mod*
+*.cmd
+.tmp_versions/
+modules.order
+Module.symvers
+Mkfile.old
+dkms.conf
+
+# Backup files
+*.bak
+*.swp
+*~
+*.orig
+
+# OS specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# STM32CubeMX temporary files
+.mxproject
+
+# IAR specific
+*.ewd
+*.ewt
+*.ewp
+*.eww
+*.dep
+*.ewt
+*.ewd
+
+# Keil specific
+*.uvprojx
+*.uvoptx
+*.uvguix.*
+JLinkLog.txt
+JLinkSettings.ini
