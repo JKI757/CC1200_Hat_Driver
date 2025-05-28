@@ -1,2 +1,0 @@
-../Core/Inc/globals.h:84:12:Radio* Globals::getRadio()	16	static
-../Core/Src/gpio_interrupts.cpp:12:17:void HAL_GPIO_EXTI_Callback(uint16_t)	24	static

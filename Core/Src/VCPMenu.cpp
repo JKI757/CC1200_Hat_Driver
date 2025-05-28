@@ -18,7 +18,7 @@ extern "C" void VCP_RxCallback(uint8_t* data, uint32_t len) {
  * @brief Constructor for VCPMenu class
  */
 VCPMenu::VCPMenu(Globals* globals)
-    : m_globals(globals), m_rxBufferHead(0), m_rxBufferTail(0), m_cmdBufferIndex(0) {
+    : globals(globals), rxBufferHead(0), rxBufferTail(0), cmdBufferIndex(0) {
     // Store the global instance for callback
     g_vcpMenu = this;
 }
@@ -28,9 +28,9 @@ VCPMenu::VCPMenu(Globals* globals)
  */
 void VCPMenu::init() {
     // Clear buffers
-    memset(m_rxBuffer, 0, sizeof(m_rxBuffer));
-    memset(m_txBuffer, 0, sizeof(m_txBuffer));
-    memset(m_cmdBuffer, 0, sizeof(m_cmdBuffer));
+    memset(this->rxBuffer, 0, sizeof(this->rxBuffer));
+    memset(this->txBuffer, 0, sizeof(this->txBuffer));
+    memset(this->cmdBuffer, 0, sizeof(this->cmdBuffer));
     
     // Display welcome message
     displayWelcome();
@@ -43,14 +43,14 @@ void VCPMenu::processData(uint8_t* data, uint32_t len) {
     // Add data to receive buffer
     for (uint32_t i = 0; i < len; i++) {
         // Check if buffer is full
-        if ((m_rxBufferHead + 1) % VCP_RX_BUFFER_SIZE == m_rxBufferTail) {
+        if ((this->rxBufferHead + 1) % VCP_RX_BUFFER_SIZE == this->rxBufferTail) {
             // Buffer is full, discard data
             continue;
         }
         
         // Add data to buffer
-        m_rxBuffer[m_rxBufferHead] = data[i];
-        m_rxBufferHead = (m_rxBufferHead + 1) % VCP_RX_BUFFER_SIZE;
+        this->rxBuffer[this->rxBufferHead] = data[i];
+        this->rxBufferHead = (this->rxBufferHead + 1) % VCP_RX_BUFFER_SIZE;
     }
 }
 
@@ -59,10 +59,10 @@ void VCPMenu::processData(uint8_t* data, uint32_t len) {
  */
 void VCPMenu::processCommands() {
     // Process data in receive buffer
-    while (m_rxBufferTail != m_rxBufferHead) {
+    while (this->rxBufferTail != this->rxBufferHead) {
         // Get next byte
-        uint8_t byte = m_rxBuffer[m_rxBufferTail];
-        m_rxBufferTail = (m_rxBufferTail + 1) % VCP_RX_BUFFER_SIZE;
+        uint8_t byte = this->rxBuffer[this->rxBufferTail];
+        this->rxBufferTail = (this->rxBufferTail + 1) % VCP_RX_BUFFER_SIZE;
         
         // Echo character back to terminal
         char echo[2] = {static_cast<char>(byte), 0};
@@ -71,33 +71,33 @@ void VCPMenu::processCommands() {
         // Process byte
         if (byte == '\r' || byte == '\n') {
             // End of line, process command
-            if (m_cmdBufferIndex > 0) {
+            if (this->cmdBufferIndex > 0) {
                 // Null-terminate command
-                m_cmdBuffer[m_cmdBufferIndex] = '\0';
+                this->cmdBuffer[this->cmdBufferIndex] = '\0';
                 
                 // Parse and execute command
-                parseCommand(m_cmdBuffer);
+                parseCommand(this->cmdBuffer);
                 
                 // Clear command buffer
-                m_cmdBufferIndex = 0;
-                memset(m_cmdBuffer, 0, sizeof(m_cmdBuffer));
+                this->cmdBufferIndex = 0;
+                memset(this->cmdBuffer, 0, sizeof(this->cmdBuffer));
                 
                 // Print prompt
                 sendData("\r\n> ", 4);
             }
         } else if (byte == '\b' || byte == 127) {
             // Backspace
-            if (m_cmdBufferIndex > 0) {
-                m_cmdBufferIndex--;
-                m_cmdBuffer[m_cmdBufferIndex] = '\0';
+            if (this->cmdBufferIndex > 0) {
+                this->cmdBufferIndex--;
+                this->cmdBuffer[this->cmdBufferIndex] = '\0';
                 
                 // Echo backspace sequence
                 sendData("\b \b", 3);
             }
         } else if (byte >= 32 && byte < 127) {
             // Printable character
-            if (m_cmdBufferIndex < VCP_CMD_BUFFER_SIZE - 1) {
-                m_cmdBuffer[m_cmdBufferIndex++] = static_cast<char>(byte);
+            if (this->cmdBufferIndex < VCP_CMD_BUFFER_SIZE - 1) {
+                this->cmdBuffer[this->cmdBufferIndex++] = static_cast<char>(byte);
             }
         }
     }
@@ -183,7 +183,7 @@ void VCPMenu::displayHelp() {
  * @brief Display status
  */
 void VCPMenu::displayStatus() {
-    Radio* radio = m_globals->getRadio();
+    Radio* radio = this->globals->getRadio();
     if (radio == nullptr) {
         printf("Radio not initialized\r\n");
         return;
@@ -202,8 +202,32 @@ void VCPMenu::displayStatus() {
  * @brief Send data over VCP
  */
 void VCPMenu::sendData(const char* data, uint16_t len) {
-    // Send data over USB CDC
-    CDC_Transmit_FS((uint8_t*)data, len);
+    // Maximum number of retries
+    const uint8_t maxRetries = 10;
+    uint8_t retries = 0;
+    uint8_t result = USBD_BUSY;
+    
+    // Try to send data with retries if busy
+    while (retries < maxRetries) {
+        result = CDC_Transmit_FS((uint8_t*)data, len);
+        
+        if (result == USBD_OK) {
+            break; // Transmission started successfully
+        } else if (result == USBD_BUSY) {
+            // If busy, wait a bit and retry
+            HAL_Delay(1); // Short delay before retry
+            retries++;
+        } else {
+            // Other error, exit
+            break;
+        }
+    }
+    
+    // Small delay after successful transmission to ensure it completes
+    // This helps with terminal display issues
+    if (result == USBD_OK) {
+        HAL_Delay(1);
+    }
 }
 
 /**
@@ -214,12 +238,27 @@ void VCPMenu::printf(const char* format, ...) {
     va_start(args, format);
     
     // Format string
-    vsnprintf((char*)m_txBuffer, VCP_TX_BUFFER_SIZE, format, args);
+    vsnprintf((char*)this->txBuffer, VCP_TX_BUFFER_SIZE, format, args);
     
     va_end(args);
     
-    // Send data
-    sendData((char*)m_txBuffer, strlen((char*)m_txBuffer));
+    // Get the length of the formatted string
+    uint16_t len = strlen((char*)this->txBuffer);
+    
+    // For longer messages, break them into smaller chunks to ensure reliable transmission
+    const uint16_t chunkSize = 64; // Smaller chunks are more reliable
+    
+    if (len <= chunkSize) {
+        // Send short message in one go
+        sendData((char*)this->txBuffer, len);
+    } else {
+        // Send longer message in chunks
+        for (uint16_t i = 0; i < len; i += chunkSize) {
+            uint16_t remaining = len - i;
+            uint16_t sendSize = (remaining > chunkSize) ? chunkSize : remaining;
+            sendData((char*)&this->txBuffer[i], sendSize);
+        }
+    }
 }
 
 /**
@@ -247,7 +286,7 @@ void VCPMenu::cmdStatus(int argc, char* argv[]) {
  * @brief Command handler: transmit
  */
 void VCPMenu::cmdTransmit(int argc, char* argv[]) {
-    Radio* radio = m_globals->getRadio();
+    Radio* radio = this->globals->getRadio();
     if (radio == nullptr) {
         printf("Radio not initialized\r\n");
         return;
@@ -287,11 +326,11 @@ void VCPMenu::cmdTransmit(int argc, char* argv[]) {
         printf("Transmission successful\r\n");
         
         // Turn on TX LED for visual feedback
-        m_globals->setTxLED(1);
+        this->globals->setTxLED(1);
         
         // Turn off TX LED after a short delay
         HAL_Delay(100);
-        m_globals->setTxLED(0);
+        this->globals->setTxLED(0);
     } else {
         printf("Transmission failed\r\n");
     }
@@ -301,7 +340,7 @@ void VCPMenu::cmdTransmit(int argc, char* argv[]) {
  * @brief Command handler: receive
  */
 void VCPMenu::cmdReceive(int argc, char* argv[]) {
-    Radio* radio = m_globals->getRadio();
+    Radio* radio = this->globals->getRadio();
     if (radio == nullptr) {
         printf("Radio not initialized\r\n");
         return;
@@ -314,7 +353,7 @@ void VCPMenu::cmdReceive(int argc, char* argv[]) {
     radio->startContinuousReceive();
     
     // Turn on RX LED for visual feedback
-    m_globals->setRxLED(1);
+    this->globals->setRxLED(1);
     
     // Receive buffer
     char rxBuffer[VCP_RX_BUFFER_SIZE];
@@ -334,7 +373,7 @@ void VCPMenu::cmdReceive(int argc, char* argv[]) {
         }
         
         // Check if user pressed a key to stop
-        if (m_rxBufferTail != m_rxBufferHead) {
+        if (this->rxBufferTail != this->rxBufferHead) {
             receiving = false;
         }
         
@@ -346,19 +385,19 @@ void VCPMenu::cmdReceive(int argc, char* argv[]) {
     radio->stopContinuousReceive();
     
     // Turn off RX LED
-    m_globals->setRxLED(0);
+    this->globals->setRxLED(0);
     
     printf("Receive mode stopped\r\n");
     
     // Clear any pending input
-    m_rxBufferHead = m_rxBufferTail;
+    this->rxBufferHead = this->rxBufferTail;
 }
 
 /**
  * @brief Command handler: set frequency
  */
 void VCPMenu::cmdSetFreq(int argc, char* argv[]) {
-    Radio* radio = m_globals->getRadio();
+    Radio* radio = this->globals->getRadio();
     if (radio == nullptr) {
         printf("Radio not initialized\r\n");
         return;
@@ -389,7 +428,7 @@ void VCPMenu::cmdSetFreq(int argc, char* argv[]) {
  * @brief Command handler: set symbol rate
  */
 void VCPMenu::cmdSetRate(int argc, char* argv[]) {
-    Radio* radio = m_globals->getRadio();
+    Radio* radio = this->globals->getRadio();
     if (radio == nullptr) {
         printf("Radio not initialized\r\n");
         return;
@@ -423,10 +462,10 @@ void VCPMenu::cmdReset(int argc, char* argv[]) {
     printf("Resetting radio...\r\n");
     
     // Reset the radio
-    m_globals->resetCC1200();
+    this->globals->resetCC1200();
     
     // Re-initialize the radio
-    if (m_globals->initRadio()) {
+    if (this->globals->initRadio()) {
         printf("Radio reset and initialized successfully\r\n");
     } else {
         printf("Failed to initialize radio after reset\r\n");

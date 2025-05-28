@@ -3,7 +3,7 @@
 #include "Radio.h"
 
 // External globals instance
-extern Globals* g_globals;
+extern Globals* globals;
 
 /**
  * @brief GPIO EXTI callback
@@ -14,8 +14,8 @@ extern "C" void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     // Check which pin triggered the interrupt
     if (GPIO_Pin == CC_GPIO0_Pin || GPIO_Pin == CC_GPIO2_Pin || GPIO_Pin == CC_GPIO3_Pin) {
         // Get the Radio instance
-        if (g_globals != nullptr) {
-            Radio* radio = g_globals->getRadio();
+        if (globals != nullptr) {
+            Radio* radio = globals->getRadio();
             if (radio != nullptr) {
                 // Handle the interrupt in the Radio class
                 radio->handleGPIOInterrupt(GPIO_Pin);

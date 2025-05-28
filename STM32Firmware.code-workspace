@@ -1,0 +1,11 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"stm32-for-vscode.openOCDPath": "/Users/josh/Library/Application Support/Windsurf/User/globalStorage/bmd.stm32-for-vscode/@xpack-dev-tools/openocd/0.12.0-6.1/.content/bin/openocd",
+		"clangd.arguments": []
+	}
+}

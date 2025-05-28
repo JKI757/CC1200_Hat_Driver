@@ -64,8 +64,11 @@
   * @param  spi: Pointer to SPI handle
   * @retval None
   */
-Globals::Globals(UART_HandleTypeDef* uart, IWDG_HandleTypeDef* iwdg, SPI_HandleTypeDef* spi)
-    : m_uart(uart), m_iwdg(iwdg), m_spi(spi), m_radio(nullptr) {
+Globals::Globals(UART_HandleTypeDef* uart, IWDG_HandleTypeDef* iwdg, SPI_HandleTypeDef* spi,
+		GPIO_TypeDef* LedGPIO, uint16_t LedPin, GPIO_TypeDef* KeyButtonGPIO, uint16_t KeyButtonPin)
+    : uart(uart), iwdg(iwdg), spi(spi), LedGPIO(LedGPIO), LedPin(LedPin),
+	  KeyButtonGPIO(KeyButtonGPIO), KeyButtonPin(KeyButtonPin),
+	  radio(nullptr) {
     // Store the peripheral handles provided
 }
 
@@ -75,9 +78,9 @@ Globals::Globals(UART_HandleTypeDef* uart, IWDG_HandleTypeDef* iwdg, SPI_HandleT
   */
 Globals::~Globals() {
     // Clean up resources
-    if (m_radio != nullptr) {
-        delete m_radio;
-        m_radio = nullptr;
+    if (this->radio != nullptr) {
+        delete radio;
+        this->radio = nullptr;
     }
 }
 
@@ -87,15 +90,15 @@ Globals::~Globals() {
   */
 bool Globals::initRadio() {
     // Create the Radio instance if it doesn't exist
-    if (m_radio == nullptr) {
+    if (this->radio == nullptr) {
         // Initialize Radio with the appropriate GPIO pins and SPI
-        m_radio = new Radio(m_spi, 
+        this->radio = new Radio(spi,
                            GPIOA, GPIO_PIN_4, // CS pin (SPI1_NSS)
                            _CC_RST_GPIO_Port, _CC_RST_Pin); // Reset pin
     }
     
     // Initialize the radio
-    return m_radio->init();
+    return radio->init();
 }
 
 /**
@@ -103,7 +106,7 @@ bool Globals::initRadio() {
   * @retval None
   */
 void Globals::refreshWatchdog() {
-    HAL_IWDG_Refresh(m_iwdg);
+    HAL_IWDG_Refresh(this->iwdg);
 }
 
 /**
@@ -113,6 +116,7 @@ void Globals::refreshWatchdog() {
   */
 void Globals::setServiceLED(uint8_t state) {
     HAL_GPIO_WritePin(SVC_LED_GPIO_Port, SVC_LED_Pin, state ? GPIO_PIN_SET : GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(this->LedGPIO, this->LedPin, state ? GPIO_PIN_SET : GPIO_PIN_RESET);
 }
 
 /**

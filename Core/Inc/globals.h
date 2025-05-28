@@ -46,7 +46,8 @@ public:
      * @param  iwdg: Pointer to IWDG handle
      * @param  spi: Pointer to SPI handle
      */
-    Globals(UART_HandleTypeDef* uart, IWDG_HandleTypeDef* iwdg, SPI_HandleTypeDef* spi);
+    Globals(UART_HandleTypeDef* uart, IWDG_HandleTypeDef* iwdg, SPI_HandleTypeDef* spi,
+    		GPIO_TypeDef* LedGPIO, uint16_t LedPin, GPIO_TypeDef* KeyButtonGPIO, uint16_t KeyButtonPin);
 
     /**
      * @brief  Destructor for Globals class
@@ -63,25 +64,25 @@ public:
      * @brief  Get the UART handle
      * @retval UART handle
      */
-    UART_HandleTypeDef* getUART() { return m_uart; }
+    UART_HandleTypeDef* getUART() { return uart; }
 
     /**
      * @brief  Get the IWDG handle
      * @retval IWDG handle
      */
-    IWDG_HandleTypeDef* getIWDG() { return m_iwdg; }
+    IWDG_HandleTypeDef* getIWDG() { return iwdg; }
 
     /**
      * @brief  Get the SPI handle
      * @retval SPI handle
      */
-    SPI_HandleTypeDef* getSPI() { return m_spi; }
+    SPI_HandleTypeDef* getSPI() { return spi; }
 
     /**
      * @brief  Get the Radio instance
      * @retval Radio instance
      */
-    Radio* getRadio() { return m_radio; }
+    Radio* getRadio() { return radio; }
 
     /**
      * @brief  Refresh the watchdog
@@ -113,12 +114,16 @@ public:
 
 private:
     // Peripheral handle pointers
-    UART_HandleTypeDef* m_uart;
-    IWDG_HandleTypeDef* m_iwdg;
-    SPI_HandleTypeDef* m_spi;
+    UART_HandleTypeDef* uart;
+    IWDG_HandleTypeDef* iwdg;
+    SPI_HandleTypeDef* spi;
+    GPIO_TypeDef* LedGPIO;
+    uint16_t LedPin;
+    GPIO_TypeDef* KeyButtonGPIO;
+    uint16_t KeyButtonPin;
     
     // Radio instance
-    Radio* m_radio;
+    Radio* radio;
 };
 
 /* USER CODE END ET */

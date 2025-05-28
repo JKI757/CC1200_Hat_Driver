@@ -80,19 +80,19 @@ public:
 
 private:
     // Globals instance
-    Globals* m_globals;
+    Globals* globals;
     
     // Receive buffer
-    uint8_t m_rxBuffer[VCP_RX_BUFFER_SIZE];
-    uint32_t m_rxBufferHead;
-    uint32_t m_rxBufferTail;
+    uint8_t rxBuffer[VCP_RX_BUFFER_SIZE];
+    uint32_t rxBufferHead;
+    uint32_t rxBufferTail;
     
     // Transmit buffer
-    uint8_t m_txBuffer[VCP_TX_BUFFER_SIZE];
+    uint8_t txBuffer[VCP_TX_BUFFER_SIZE];
     
     // Command buffer
-    char m_cmdBuffer[VCP_CMD_BUFFER_SIZE];
-    uint32_t m_cmdBufferIndex;
+    char cmdBuffer[VCP_CMD_BUFFER_SIZE];
+    uint32_t cmdBufferIndex;
     
     // Command line parsing
     void parseCommand(char* cmd);

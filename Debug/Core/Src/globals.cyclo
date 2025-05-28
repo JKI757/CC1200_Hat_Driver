@@ -1,8 +1,0 @@
-../Core/Src/globals.cpp:67:1:Globals::Globals(UART_HandleTypeDef*, IWDG_HandleTypeDef*, SPI_HandleTypeDef*)	1
-../Core/Src/globals.cpp:76:1:Globals::~Globals()	3
-../Core/Src/globals.cpp:88:6:bool Globals::initRadio()	2
-../Core/Src/globals.cpp:105:6:void Globals::refreshWatchdog()	1
-../Core/Src/globals.cpp:114:6:void Globals::setServiceLED(uint8_t)	2
-../Core/Src/globals.cpp:123:6:void Globals::setRxLED(uint8_t)	2
-../Core/Src/globals.cpp:132:6:void Globals::setTxLED(uint8_t)	2
-../Core/Src/globals.cpp:140:6:void Globals::resetCC1200()	1

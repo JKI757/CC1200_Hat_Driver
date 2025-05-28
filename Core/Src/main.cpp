@@ -52,7 +52,7 @@
 
 /* USER CODE BEGIN PV */
 // Global instance of the Globals class
-Globals* g_globals = nullptr;
+Globals* globals = nullptr;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -104,14 +104,14 @@ int main(void)
   MX_TIM11_Init();
   /* USER CODE BEGIN 2 */
   // Create the globals instance with the initialized peripheral handles
-  g_globals = new Globals(&huart1, &hiwdg, &hspi1);
+  globals = new Globals(&huart1, &hiwdg, &hspi1, BP_LED_BLUE_GPIO_Port, BP_LED_BLUE_Pin, BP_KEY_BTN_GPIO_Port, GPIO_PIN_0);
   /* USER CODE END 2 */
 
   /* Init scheduler */
   osKernelInitialize();
 
   /* Call init function for freertos objects (in cmsis_os2.c) */
-  MX_FREERTOS_Init(g_globals);
+  MX_FREERTOS_Init(globals);
 
   /* Start scheduler */
   osKernelStart();
