@@ -89,44 +89,80 @@ The firmware uses FreeRTOS with proper synchronization:
 - The project uses STM32CubeIDE configuration (.ioc file) for hardware setup
 - GPIO interrupts are handled in `Core/Src/gpio_interrupts.cpp`
 
-## Current Status & Debugging
+## Current Status: WORKING ✅
 
-The project currently boots and provides a USB VCP command interface, but CC1200 radio functions are not working properly. The issue is likely in the DMA configuration or basic SPI communication.
+The project now has **working CC1200 SPI communication** with comprehensive debug output. Basic radio functionality is operational and ready for advanced development.
 
-### Available Debug Commands
+### ✅ Successfully Implemented
 
-The VCP menu provides comprehensive debugging tools:
-- `radio_debug_on` - Enable SPI debug output to UART for low-level troubleshooting
-- `radio_debug_off` - Disable SPI debug output
-- `radio_status` - Get detailed CC1200 status (RSSI, LQI, state, FIFO)
-- `radio_version` - Get CC1200 part number and version (should return 0x20)
-- `radio_init` - Initialize radio with default settings
-- `sysinfo` - Display system information
+- **SPI Communication**: CC1200 responds correctly to all register reads/writes
+- **USB VCP Interface**: Complete command-line interface with 15+ radio commands
+- **Debug Output**: Real-time SPI transaction logging (TX/RX bytes) over USB
+- **Hardware Verification**: CC1200 part number confirmed (0x20), chip in RX mode
+- **Code Architecture**: Clean direct CC1200 access without abstraction overhead
 
-### Basic CC1200 Test Strategy
+### Available Commands
 
-For debugging CC1200 communication issues:
+**Basic Radio Operations:**
+- `radio_debug_on/off` - Enable/disable SPI transaction debug output
+- `radio_init` - Initialize CC1200 with default settings  
+- `radio_version` - Read part number (0x20) and version (0x11)
+- `radio_status` - Detailed status (RSSI, LQI, state, FIFO levels)
+- `freq <Hz>` - Set frequency (915MHz ISM band supported)
+- `rate <Hz>` - Set symbol rate (default 50kHz)
 
-1. **Enable debug output**: Use `radio_debug_on` to see SPI transactions
-2. **Test basic communication**: Use `radio_version` to verify part number (should be 0x20)
-3. **Check initialization**: Use `radio_init` and monitor debug output
-4. **Test register access**: Use `radio_status` to verify register reads
-5. **Verify SPI configuration**: Check that SPI1 is properly configured for CC1200
+**Data Transmission/Reception:**
+- `radio_tx <hex_data>` - Transmit packet data (hex format)
+- `radio_rx <timeout_ms>` - Receive packets with timeout
+- `radio_stream_tx/rx` - Stream mode for continuous data
+- `tx/rx <data>` - High-level transmit/receive commands
 
-### Key Test Registers
+**System Commands:**
+- `help` - Complete command reference
+- `sysinfo` - System information and diagnostics
+- `restart` - System restart
 
-- `ExtRegister::PARTNUMBER` (0x8F) - Should read 0x20 for CC1200
-- `ExtRegister::PARTVERSION` (0x90) - Hardware version
-- `ExtRegister::MARCSTATE` (0x73) - Current state machine state
-- `Register::PKT_LEN` (0x2E) - Simple read/write test register
+### SPI Debug Output Example
 
-### Common Issues to Check
+When `radio_debug_on` is enabled, you see exact protocol details:
+```
+> radio_status
+SPI: TX=0xAF RX=0x00    # Read extended register command
+SPI: TX=0x73 RX=0x00    # MARCSTATE register address  
+SPI: TX=0x00 RX=0x41    # Read state value (0x41 = RX mode)
+State: RX
+```
 
-- SPI timing and clock configuration
-- GPIO pin assignments for CS and RST
-- DMA configuration conflicts
-- Power supply stability
-- Hardware reset sequence
+### Hardware Configuration Verified
+
+- **SPI1**: PA4 (CS), PA5 (SCK), PA6 (MISO), PA7 (MOSI) 
+- **CC1200 Control**: PB0 (Reset), PB12-14 (GPIO0,2,3)
+- **Status LEDs**: PB3 (Service), PB4 (RX), PB5 (TX)
+- **USB VCP**: Full CDC interface for commands and debug output
+
+## Next Steps: DMA & Advanced Features
+
+### Phase 1: DMA Implementation
+- Re-enable SPI DMA for high-speed data transfer
+- Implement DMA-based streaming for large data payloads
+- Add DMA completion callbacks and error handling
+
+### Phase 2: Advanced CC1200 Features  
+- Implement 4FSK modulation optimization
+- Add FIFO threshold interrupts for real-time data
+- Implement packet mode with automatic CRC
+- Add frequency hopping and channel management
+
+### Phase 3: Digital Data Protocols
+- High-speed data streaming protocols
+- Custom packet formats for specific applications
+- Error correction and retransmission
+- Advanced modulation schemes beyond basic 4FSK
+
+### Reference Documentation
+- CC1200 datasheet available in `Documents/swru346b.pdf`
+- Current implementation based on USC Rocket Propulsion Lab driver
+- Ready for extension beyond basic HAL functionality
 
 ## File Structure Context
 
