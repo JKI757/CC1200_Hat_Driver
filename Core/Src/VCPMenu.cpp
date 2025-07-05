@@ -166,6 +166,22 @@ void VCPMenu::executeCommand(const char* cmd, int argc, char* argv[]) {
         cmdRadioDebugOn(argc, argv);
     } else if (strcmp(argv[0], "radio_debug_off") == 0) {
         cmdRadioDebugOff(argc, argv);
+    } else if (strcmp(argv[0], "radio_tx_dma") == 0) {
+        cmdRadioTXDMA(argc, argv);
+    } else if (strcmp(argv[0], "radio_rx_dma") == 0) {
+        cmdRadioRXDMA(argc, argv);
+    } else if (strcmp(argv[0], "radio_stream_tx_dma") == 0) {
+        cmdRadioStreamTXDMA(argc, argv);
+    } else if (strcmp(argv[0], "radio_stream_rx_dma") == 0) {
+        cmdRadioStreamRXDMA(argc, argv);
+    } else if (strcmp(argv[0], "radio_stream_start_tx") == 0) {
+        cmdRadioStreamStartTX(argc, argv);
+    } else if (strcmp(argv[0], "radio_stream_start_rx") == 0) {
+        cmdRadioStreamStartRX(argc, argv);
+    } else if (strcmp(argv[0], "radio_stream_stop") == 0) {
+        cmdRadioStreamStop(argc, argv);
+    } else if (strcmp(argv[0], "radio_stream_stats") == 0) {
+        cmdRadioStreamStats(argc, argv);
     } else if (strcmp(argv[0], "restart") == 0) {
         cmdRestart(argc, argv);
     } else if (strcmp(argv[0], "sysinfo") == 0) {
@@ -218,6 +234,20 @@ void VCPMenu::displayHelp() {
     printf("  radio_version        - Get CC1200 part version\r\n");
     printf("  radio_debug_on       - Enable SPI debug output to UART\r\n");
     printf("  radio_debug_off      - Disable SPI debug output\r\n");
+    printf("\r\n");
+    
+    printf("DMA-enabled radio commands:\r\n");
+    printf("  radio_tx_dma <hex_data> - Transmit data using DMA\r\n");
+    printf("  radio_rx_dma <timeout_ms> - Receive data using DMA\r\n");
+    printf("  radio_stream_tx_dma <hex_data> - Stream transmit using DMA\r\n");
+    printf("  radio_stream_rx_dma <bytes> <timeout_ms> - Stream receive using DMA\r\n");
+    printf("\r\n");
+    
+    printf("Continuous streaming commands:\r\n");
+    printf("  radio_stream_start_tx <hex_pattern> - Start continuous TX streaming\r\n");
+    printf("  radio_stream_start_rx - Start continuous RX streaming\r\n");
+    printf("  radio_stream_stop - Stop all continuous streaming\r\n");
+    printf("  radio_stream_stats - Show streaming statistics\r\n");
     printf("\r\n");
     
     printf("System commands:\r\n");
@@ -1012,5 +1042,332 @@ void VCPMenu::cmdSysInfo(int argc, char* argv[]) {
     printf("  System Clock: %lu MHz\r\n", HAL_RCC_GetSysClockFreq() / 1000000);
     printf("  HCLK: %lu MHz\r\n", HAL_RCC_GetHCLKFreq() / 1000000);
     printf("  Uptime: %lu ms\r\n", HAL_GetTick());
+    printf("\r\n");
+}
+
+// ============================================================================
+// DMA Command Handler Functions
+// ============================================================================
+
+void VCPMenu::cmdRadioTXDMA(int argc, char* argv[]) {
+    CC1200* cc1200 = this->globals->getCC1200();
+    if (cc1200 == nullptr) {
+        printf("Error: CC1200 not initialized\r\n");
+        return;
+    }
+
+    if (argc < 2) {
+        printf("Usage: radio_tx_dma <hex_data>\r\n");
+        printf("Example: radio_tx_dma 48656C6C6F\r\n");
+        return;
+    }
+
+    // Parse hex data
+    std::string hexStr = argv[1];
+    if (hexStr.length() % 2 != 0) {
+        printf("Error: Hex data must have even number of characters\r\n");
+        return;
+    }
+
+    size_t dataLen = hexStr.length() / 2;
+    if (dataLen > 127) {
+        printf("Error: Data too long (max 127 bytes)\r\n");
+        return;
+    }
+
+    char data[128];
+    for (size_t i = 0; i < dataLen; i++) {
+        std::string byteStr = hexStr.substr(i * 2, 2);
+        data[i] = static_cast<char>(strtol(byteStr.c_str(), nullptr, 16));
+    }
+
+    // Turn on TX LED
+    this->globals->setTxLED(1);
+
+    // Transmit using DMA
+    bool success = cc1200->enqueuePacketDMA(data, dataLen);
+
+    // Turn off TX LED
+    this->globals->setTxLED(0);
+
+    if (success) {
+        printf("DMA transmission queued: %u bytes\r\n", (unsigned int)dataLen);
+    } else {
+        printf("Error: DMA transmission failed\r\n");
+    }
+}
+
+void VCPMenu::cmdRadioRXDMA(int argc, char* argv[]) {
+    CC1200* cc1200 = this->globals->getCC1200();
+    if (cc1200 == nullptr) {
+        printf("Error: CC1200 not initialized\r\n");
+        return;
+    }
+
+    uint32_t timeout = 5000; // Default 5 second timeout
+    if (argc >= 2) {
+        timeout = strtoul(argv[1], nullptr, 10);
+    }
+
+    printf("Waiting for packet (timeout: %lu ms)...\r\n", timeout);
+
+    // Turn on RX LED
+    this->globals->setRxLED(1);
+
+    uint32_t startTime = HAL_GetTick();
+    char buffer[128];
+    size_t bytesReceived = 0;
+
+    while ((HAL_GetTick() - startTime) < timeout) {
+        if (cc1200->hasReceivedPacket()) {
+            bytesReceived = cc1200->receivePacketDMA(buffer, sizeof(buffer));
+            break;
+        }
+        HAL_Delay(10); // Small delay to prevent busy waiting
+    }
+
+    // Turn off RX LED
+    this->globals->setRxLED(0);
+
+    if (bytesReceived > 0) {
+        printf("DMA received %u bytes: ", (unsigned int)bytesReceived);
+        for (size_t i = 0; i < bytesReceived; i++) {
+            printf("%02X", (uint8_t)buffer[i]);
+        }
+        printf("\r\n");
+    } else {
+        printf("No data received (timeout)\r\n");
+    }
+}
+
+void VCPMenu::cmdRadioStreamTXDMA(int argc, char* argv[]) {
+    CC1200* cc1200 = this->globals->getCC1200();
+    if (cc1200 == nullptr) {
+        printf("Error: CC1200 not initialized\r\n");
+        return;
+    }
+
+    if (argc < 2) {
+        printf("Usage: radio_stream_tx_dma <hex_data>\r\n");
+        printf("Example: radio_stream_tx_dma 48656C6C6F576F726C64\r\n");
+        return;
+    }
+
+    // Parse hex data
+    std::string hexStr = argv[1];
+    if (hexStr.length() % 2 != 0) {
+        printf("Error: Hex data must have even number of characters\r\n");
+        return;
+    }
+
+    size_t dataLen = hexStr.length() / 2;
+    if (dataLen > 254) {
+        printf("Error: Data too long for single DMA transfer (max 254 bytes)\r\n");
+        return;
+    }
+
+    char data[255];
+    for (size_t i = 0; i < dataLen; i++) {
+        std::string byteStr = hexStr.substr(i * 2, 2);
+        data[i] = static_cast<char>(strtol(byteStr.c_str(), nullptr, 16));
+    }
+
+    // Turn on TX LED
+    this->globals->setTxLED(1);
+
+    // Stream transmit using DMA
+    size_t bytesWritten = cc1200->writeStreamDMA(data, dataLen);
+
+    // Turn off TX LED
+    this->globals->setTxLED(0);
+
+    printf("DMA stream transmitted: %u of %u bytes\r\n", 
+           (unsigned int)bytesWritten, (unsigned int)dataLen);
+}
+
+void VCPMenu::cmdRadioStreamRXDMA(int argc, char* argv[]) {
+    CC1200* cc1200 = this->globals->getCC1200();
+    if (cc1200 == nullptr) {
+        printf("Error: CC1200 not initialized\r\n");
+        return;
+    }
+
+    if (argc < 3) {
+        printf("Usage: radio_stream_rx_dma <bytes> <timeout_ms>\r\n");
+        printf("Example: radio_stream_rx_dma 64 5000\r\n");
+        return;
+    }
+
+    size_t bytesToRead = strtoul(argv[1], nullptr, 10);
+    uint32_t timeout = strtoul(argv[2], nullptr, 10);
+
+    if (bytesToRead > 254) {
+        printf("Error: Too many bytes requested (max 254)\r\n");
+        return;
+    }
+
+    printf("Waiting for %u bytes (timeout: %lu ms)...\r\n", 
+           (unsigned int)bytesToRead, timeout);
+
+    // Turn on RX LED
+    this->globals->setRxLED(1);
+
+    uint32_t startTime = HAL_GetTick();
+    char buffer[255];
+    size_t totalReceived = 0;
+
+    while (totalReceived < bytesToRead && (HAL_GetTick() - startTime) < timeout) {
+        size_t remainingBytes = bytesToRead - totalReceived;
+        size_t bytesReceived = cc1200->readStreamDMA(&buffer[totalReceived], remainingBytes);
+        
+        if (bytesReceived > 0) {
+            totalReceived += bytesReceived;
+            printf("DMA received %u bytes (total: %u)\r\n", 
+                   (unsigned int)bytesReceived, (unsigned int)totalReceived);
+        } else {
+            HAL_Delay(10); // Small delay if no data available
+        }
+    }
+
+    // Turn off RX LED
+    this->globals->setRxLED(0);
+
+    if (totalReceived > 0) {
+        printf("DMA stream received %u bytes: ", (unsigned int)totalReceived);
+        for (size_t i = 0; i < totalReceived; i++) {
+            printf("%02X", (uint8_t)buffer[i]);
+        }
+        printf("\r\n");
+    } else {
+        printf("No data received (timeout)\r\n");
+    }
+}
+
+// ============================================================================
+// Continuous Streaming Command Handler Functions
+// ============================================================================
+
+void VCPMenu::cmdRadioStreamStartTX(int argc, char* argv[]) {
+    CC1200* cc1200 = this->globals->getCC1200();
+    if (cc1200 == nullptr) {
+        printf("Error: CC1200 not initialized\r\n");
+        return;
+    }
+
+    if (argc < 2) {
+        printf("Usage: radio_stream_start_tx <hex_pattern>\r\n");
+        printf("Example: radio_stream_start_tx 48656C6C6F576F726C64\r\n");
+        printf("Note: Pattern will be transmitted continuously\r\n");
+        return;
+    }
+
+    // Parse hex pattern
+    std::string hexStr = argv[1];
+    if (hexStr.length() % 2 != 0) {
+        printf("Error: Hex pattern must have even number of characters\r\n");
+        return;
+    }
+
+    size_t patternLen = hexStr.length() / 2;
+    if (patternLen > 127) {
+        printf("Error: Pattern too long (max 127 bytes)\r\n");
+        return;
+    }
+
+    char pattern[128];
+    for (size_t i = 0; i < patternLen; i++) {
+        std::string byteStr = hexStr.substr(i * 2, 2);
+        pattern[i] = static_cast<char>(strtol(byteStr.c_str(), nullptr, 16));
+    }
+
+    // Start continuous streaming
+    bool success = cc1200->startContinuousStreamingTx(pattern, patternLen);
+
+    if (success) {
+        printf("Continuous TX streaming started with %u byte pattern\r\n", (unsigned int)patternLen);
+        printf("TX LED will blink to indicate streaming activity\r\n");
+        printf("Use 'radio_stream_stop' to stop streaming\r\n");
+        printf("Use 'radio_stream_stats' to view statistics\r\n");
+    } else {
+        printf("Error: Failed to start continuous TX streaming\r\n");
+    }
+}
+
+void VCPMenu::cmdRadioStreamStartRX(int argc, char* argv[]) {
+    CC1200* cc1200 = this->globals->getCC1200();
+    if (cc1200 == nullptr) {
+        printf("Error: CC1200 not initialized\r\n");
+        return;
+    }
+
+    // Start continuous streaming
+    bool success = cc1200->startContinuousStreamingRx();
+
+    if (success) {
+        printf("Continuous RX streaming started\r\n");
+        printf("RX LED will blink to indicate streaming activity\r\n");
+        printf("Use 'radio_stream_stop' to stop streaming\r\n");
+        printf("Use 'radio_stream_stats' to view statistics\r\n");
+    } else {
+        printf("Error: Failed to start continuous RX streaming\r\n");
+    }
+}
+
+void VCPMenu::cmdRadioStreamStop(int argc, char* argv[]) {
+    CC1200* cc1200 = this->globals->getCC1200();
+    if (cc1200 == nullptr) {
+        printf("Error: CC1200 not initialized\r\n");
+        return;
+    }
+
+    bool wasTxActive = cc1200->isContinuousStreamingTx();
+    bool wasRxActive = cc1200->isContinuousStreamingRx();
+
+    // Stop all continuous streaming
+    cc1200->stopContinuousStreamingTx();
+    cc1200->stopContinuousStreamingRx();
+
+    // Turn off LEDs
+    this->globals->setTxLED(0);
+    this->globals->setRxLED(0);
+
+    if (wasTxActive || wasRxActive) {
+        printf("Continuous streaming stopped\r\n");
+        if (wasTxActive) printf("  - TX streaming stopped\r\n");
+        if (wasRxActive) printf("  - RX streaming stopped\r\n");
+        printf("Use 'radio_stream_stats' to view final statistics\r\n");
+    } else {
+        printf("No continuous streaming was active\r\n");
+    }
+}
+
+void VCPMenu::cmdRadioStreamStats(int argc, char* argv[]) {
+    CC1200* cc1200 = this->globals->getCC1200();
+    if (cc1200 == nullptr) {
+        printf("Error: CC1200 not initialized\r\n");
+        return;
+    }
+
+    uint32_t txCount, rxCount, txErrors, rxErrors;
+    cc1200->getContinuousStreamingStats(txCount, rxCount, txErrors, rxErrors);
+
+    printf("Continuous Streaming Statistics:\r\n");
+    printf("  TX Status: %s\r\n", cc1200->isContinuousStreamingTx() ? "ACTIVE" : "STOPPED");
+    printf("  RX Status: %s\r\n", cc1200->isContinuousStreamingRx() ? "ACTIVE" : "STOPPED");
+    printf("  TX Packets: %lu\r\n", txCount);
+    printf("  RX Packets: %lu\r\n", rxCount);
+    printf("  TX Errors: %lu\r\n", txErrors);
+    printf("  RX Errors: %lu\r\n", rxErrors);
+    
+    if (txCount > 0) {
+        printf("  TX Success Rate: %.2f%%\r\n", 
+               (float)(txCount * 100) / (txCount + txErrors));
+    }
+    
+    if (rxCount > 0) {
+        printf("  RX Success Rate: %.2f%%\r\n", 
+               (float)(rxCount * 100) / (rxCount + rxErrors));
+    }
+    
     printf("\r\n");
 }

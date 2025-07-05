@@ -336,12 +336,32 @@ private:
     // Debug flag for SPI communication
     bool debugEnabled = false;
 
+    // DMA transfer state
+    volatile bool dmaTransferComplete = false;
+    volatile bool dmaTransferError = false;
+    
+    // DMA buffers (must be aligned for DMA)
+    uint8_t dmaTxBuffer[256] __attribute__((aligned(4)));
+    uint8_t dmaRxBuffer[256] __attribute__((aligned(4)));
+    
+    // Continuous streaming state
+    volatile bool continuousStreamingTx = false;
+    volatile bool continuousStreamingRx = false;
+    uint8_t streamingTxPattern[128];
+    size_t streamingTxPatternLen = 0;
+    uint32_t streamingTxCount = 0;
+    uint32_t streamingRxCount = 0;
+    uint32_t streamingTxErrors = 0;
+    uint32_t streamingRxErrors = 0;
 
     // Helper functions
     void loadStatusByte(uint8_t status);
     void select();
     void deselect();
     uint8_t spiTransfer(uint8_t data);
+    
+    // DMA helper functions
+    bool spiTransferDMA(uint8_t* txData, uint8_t* rxData, size_t len);
 
 public:
     /**
@@ -436,6 +456,99 @@ public:
      * @return true if all data was read
      */
     bool readStreamBlocking(char* buffer, size_t count, std::chrono::microseconds timeout);
+
+    /**
+     * DMA-enabled packet transmission
+     * @param data Pointer to data buffer
+     * @param len Length of data
+     * @return true if packet was successfully enqueued
+     */
+    bool enqueuePacketDMA(char const* data, size_t len);
+
+    /**
+     * DMA-enabled packet reception
+     * @param buffer Buffer to store received data
+     * @param bufferLen Size of buffer
+     * @return Number of bytes received
+     */
+    size_t receivePacketDMA(char* buffer, size_t bufferLen);
+
+    /**
+     * DMA-enabled stream write
+     * @param buffer Data to write
+     * @param count Number of bytes to write
+     * @return Number of bytes written
+     */
+    size_t writeStreamDMA(const char* buffer, size_t count);
+
+    /**
+     * DMA-enabled stream read
+     * @param buffer Buffer to store data
+     * @param maxLen Maximum number of bytes to read
+     * @return Number of bytes read
+     */
+    size_t readStreamDMA(char* buffer, size_t maxLen);
+
+    /**
+     * Start continuous streaming transmission
+     * @param pattern Data pattern to transmit repeatedly
+     * @param patternLen Length of pattern
+     * @return true if continuous streaming started
+     */
+    bool startContinuousStreamingTx(const char* pattern, size_t patternLen);
+
+    /**
+     * Start continuous streaming reception
+     * @return true if continuous streaming started
+     */
+    bool startContinuousStreamingRx();
+
+    /**
+     * Stop continuous streaming transmission
+     */
+    void stopContinuousStreamingTx();
+
+    /**
+     * Stop continuous streaming reception
+     */
+    void stopContinuousStreamingRx();
+
+    /**
+     * Check if continuous streaming TX is active
+     * @return true if streaming TX is active
+     */
+    bool isContinuousStreamingTx() const { return continuousStreamingTx; }
+
+    /**
+     * Check if continuous streaming RX is active
+     * @return true if streaming RX is active
+     */
+    bool isContinuousStreamingRx() const { return continuousStreamingRx; }
+
+    /**
+     * Get continuous streaming statistics
+     * @param txCount Number of TX packets sent
+     * @param rxCount Number of RX packets received
+     * @param txErrors Number of TX errors
+     * @param rxErrors Number of RX errors
+     */
+    void getContinuousStreamingStats(uint32_t& txCount, uint32_t& rxCount, 
+                                   uint32_t& txErrors, uint32_t& rxErrors);
+
+    /**
+     * Process continuous streaming (call regularly from main loop)
+     */
+    void processContinuousStreaming();
+
+    /**
+     * DMA transfer complete callback (called by HAL)
+     */
+    void dmaTransferCompleteCallback();
+
+    /**
+     * DMA transfer error callback (called by HAL)
+     */
+    void dmaTransferErrorCallback();
 
     /**
      * Set the state to transition to after receiving a packet

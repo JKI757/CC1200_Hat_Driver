@@ -111,11 +111,23 @@ The project now has **working CC1200 SPI communication** with comprehensive debu
 - `freq <Hz>` - Set frequency (915MHz ISM band supported)
 - `rate <Hz>` - Set symbol rate (default 50kHz)
 
-**Data Transmission/Reception:**
+**Polling-Mode Data Operations:**
 - `radio_tx <hex_data>` - Transmit packet data (hex format)
 - `radio_rx <timeout_ms>` - Receive packets with timeout
 - `radio_stream_tx/rx` - Stream mode for continuous data
 - `tx/rx <data>` - High-level transmit/receive commands
+
+**DMA-Enabled Data Operations:**
+- `radio_tx_dma <hex_data>` - Transmit data using DMA
+- `radio_rx_dma <timeout_ms>` - Receive data using DMA
+- `radio_stream_tx_dma <hex_data>` - Stream transmit using DMA
+- `radio_stream_rx_dma <bytes> <timeout_ms>` - Stream receive using DMA
+
+**Continuous Streaming (DMA-Based):**
+- `radio_stream_start_tx <hex_pattern>` - Start continuous TX streaming
+- `radio_stream_start_rx` - Start continuous RX streaming
+- `radio_stream_stop` - Stop all continuous streaming
+- `radio_stream_stats` - Show streaming statistics
 
 **System Commands:**
 - `help` - Complete command reference
@@ -136,6 +148,7 @@ State: RX
 ### Hardware Configuration Verified
 
 - **SPI1**: PA4 (CS), PA5 (SCK), PA6 (MISO), PA7 (MOSI) 
+- **SPI Clock**: 6 MHz (prescaler /8 from 48MHz APB2, optimized for CC1200 timing)
 - **CC1200 Control**: PB0 (Reset), PB12-14 (GPIO0,2,3)
 - **Status LEDs**: PB3 (Service), PB4 (RX), PB5 (TX)
 - **USB VCP**: Full CDC interface for commands and debug output

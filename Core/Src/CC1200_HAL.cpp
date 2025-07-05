@@ -1327,3 +1327,367 @@ void CC1200::setIFCfg(IFCfg value, bool enableIQIC)
         writeRegister(Register::IQIC, iqic);
     }
 }
+
+// ============================================================================
+// DMA Implementation Functions
+// ============================================================================
+
+bool CC1200::spiTransferDMA(uint8_t* txData, uint8_t* rxData, size_t len)
+{
+    if (len == 0 || len > 256) {
+        return false;
+    }
+    
+    // Reset DMA flags
+    dmaTransferComplete = false;
+    dmaTransferError = false;
+    
+    // Start DMA transfer
+    select();
+    HAL_StatusTypeDef result = HAL_SPI_TransmitReceive_DMA(hspi, txData, rxData, len);
+    
+    if (result != HAL_OK) {
+        deselect();
+        return false;
+    }
+    
+    // Wait for completion with timeout (10ms per byte)
+    uint32_t timeout = HAL_GetTick() + (len * 10);
+    while (!dmaTransferComplete && !dmaTransferError && HAL_GetTick() < timeout) {
+        // Wait for DMA to complete
+    }
+    
+    deselect();
+    
+    if (dmaTransferError) {
+        if (debugEnabled) {
+            sendStringToDebugUart("DMA: Transfer error!\n");
+        }
+        return false;
+    }
+    
+    if (!dmaTransferComplete) {
+        if (debugEnabled) {
+            sendStringToDebugUart("DMA: Transfer timeout!\n");
+        }
+        return false;
+    }
+    
+    return true;
+}
+
+void CC1200::dmaTransferCompleteCallback()
+{
+    dmaTransferComplete = true;
+    if (debugEnabled) {
+        sendStringToDebugUart("DMA: Transfer complete\n");
+    }
+}
+
+void CC1200::dmaTransferErrorCallback()
+{
+    dmaTransferError = true;
+    if (debugEnabled) {
+        sendStringToDebugUart("DMA: Transfer error callback\n");
+    }
+}
+
+bool CC1200::enqueuePacketDMA(char const* data, size_t len)
+{
+    uint8_t totalLength = len + 1; // add one byte for length byte
+
+    if(totalLength > MAX_PACKET_LENGTH || len > 254) {
+        return false;
+    }
+
+    // Wait for chip to be ready
+    uint32_t timeout = HAL_GetTick() + 100;
+    while(!chipReady && HAL_GetTick() < timeout) {
+        updateState();
+    }
+
+    if(!chipReady) {
+        return false;
+    }
+
+    // Prepare DMA buffer
+    dmaTxBuffer[0] = CC1200_ENQUEUE_TX_FIFO | CC1200_BURST;
+    dmaTxBuffer[1] = len; // Variable length mode
+    memcpy(&dmaTxBuffer[2], data, len);
+    
+    // Perform DMA transfer
+    bool success = spiTransferDMA(dmaTxBuffer, dmaRxBuffer, totalLength + 1);
+    
+    if (success && debugEnabled) {
+        char msg[64];
+        snprintf(msg, sizeof(msg), "DMA: Enqueued %u bytes\n", (unsigned int)len);
+        sendStringToDebugUart(std::string(msg));
+    }
+    
+    return success;
+}
+
+size_t CC1200::receivePacketDMA(char* buffer, size_t bufferLen)
+{
+    // Check if packet is available
+    if (!hasReceivedPacket()) {
+        return 0;
+    }
+
+    // Get the number of bytes in the RX FIFO
+    size_t fifoLen = getRXFIFOLen();
+    if (fifoLen == 0) {
+        return 0;
+    }
+
+    // Read packet length
+    dmaTxBuffer[0] = CC1200_DEQUEUE_RX_FIFO | CC1200_BURST;
+    dmaTxBuffer[1] = 0; // Dummy byte to read length
+    
+    if (!spiTransferDMA(dmaTxBuffer, dmaRxBuffer, 2)) {
+        return 0;
+    }
+    
+    uint8_t packetLen = dmaRxBuffer[1];
+    
+    if (packetLen == 0 || packetLen > bufferLen) {
+        return 0;
+    }
+
+    // Read packet data
+    dmaTxBuffer[0] = CC1200_DEQUEUE_RX_FIFO | CC1200_BURST;
+    memset(&dmaTxBuffer[1], 0, packetLen); // Dummy bytes
+    
+    if (!spiTransferDMA(dmaTxBuffer, dmaRxBuffer, packetLen + 1)) {
+        return 0;
+    }
+    
+    // Copy received data to buffer
+    memcpy(buffer, &dmaRxBuffer[1], packetLen);
+    
+    if (debugEnabled) {
+        char msg[64];
+        snprintf(msg, sizeof(msg), "DMA: Received %u bytes\n", (unsigned int)packetLen);
+        sendStringToDebugUart(std::string(msg));
+    }
+    
+    return packetLen;
+}
+
+size_t CC1200::writeStreamDMA(const char* buffer, size_t count)
+{
+    if (count == 0) {
+        return 0;
+    }
+
+    // Get available space in TX FIFO
+    size_t txFifoLen = getTXFIFOLen();
+    size_t availableSpace = CC1200_FIFO_SIZE - txFifoLen;
+    
+    // Limit write to available space
+    size_t bytesToWrite = (count > availableSpace) ? availableSpace : count;
+    if (bytesToWrite > 254) { // Leave room for command byte
+        bytesToWrite = 254;
+    }
+
+    if (bytesToWrite == 0) {
+        return 0;
+    }
+
+    // Prepare DMA buffer
+    dmaTxBuffer[0] = CC1200_ENQUEUE_TX_FIFO | CC1200_BURST;
+    memcpy(&dmaTxBuffer[1], buffer, bytesToWrite);
+    
+    // Perform DMA transfer
+    bool success = spiTransferDMA(dmaTxBuffer, dmaRxBuffer, bytesToWrite + 1);
+    
+    if (success && debugEnabled) {
+        char msg[64];
+        snprintf(msg, sizeof(msg), "DMA: Wrote %u bytes to stream\n", (unsigned int)bytesToWrite);
+        sendStringToDebugUart(std::string(msg));
+    }
+    
+    return success ? bytesToWrite : 0;
+}
+
+size_t CC1200::readStreamDMA(char* buffer, size_t maxLen)
+{
+    if (maxLen == 0) {
+        return 0;
+    }
+
+    // Get number of bytes in RX FIFO
+    size_t rxFifoLen = getRXFIFOLen();
+    if (rxFifoLen == 0) {
+        return 0;
+    }
+
+    // Limit read to available data and buffer size
+    size_t bytesToRead = (rxFifoLen > maxLen) ? maxLen : rxFifoLen;
+    if (bytesToRead > 254) { // Leave room for command byte
+        bytesToRead = 254;
+    }
+
+    // Prepare DMA buffer
+    dmaTxBuffer[0] = CC1200_DEQUEUE_RX_FIFO | CC1200_BURST;
+    memset(&dmaTxBuffer[1], 0, bytesToRead); // Dummy bytes
+    
+    // Perform DMA transfer
+    bool success = spiTransferDMA(dmaTxBuffer, dmaRxBuffer, bytesToRead + 1);
+    
+    if (success) {
+        // Copy received data to buffer
+        memcpy(buffer, &dmaRxBuffer[1], bytesToRead);
+        
+        if (debugEnabled) {
+            char msg[64];
+            snprintf(msg, sizeof(msg), "DMA: Read %u bytes from stream\n", (unsigned int)bytesToRead);
+            sendStringToDebugUart(std::string(msg));
+        }
+        
+        return bytesToRead;
+    }
+    
+    return 0;
+}
+
+// ============================================================================
+// Continuous Streaming Implementation Functions
+// ============================================================================
+
+bool CC1200::startContinuousStreamingTx(const char* pattern, size_t patternLen)
+{
+    if (patternLen == 0 || patternLen > sizeof(streamingTxPattern)) {
+        if (debugEnabled) {
+            sendStringToDebugUart("Error: Invalid pattern length for continuous streaming\n");
+        }
+        return false;
+    }
+    
+    // Stop any existing streaming
+    stopContinuousStreamingTx();
+    
+    // Copy pattern to internal buffer
+    memcpy(streamingTxPattern, pattern, patternLen);
+    streamingTxPatternLen = patternLen;
+    
+    // Reset statistics
+    streamingTxCount = 0;
+    streamingTxErrors = 0;
+    
+    // Start continuous streaming
+    continuousStreamingTx = true;
+    
+    if (debugEnabled) {
+        char msg[128];
+        snprintf(msg, sizeof(msg), "Started continuous TX streaming with %u byte pattern\n", 
+                (unsigned int)patternLen);
+        sendStringToDebugUart(std::string(msg));
+    }
+    
+    return true;
+}
+
+bool CC1200::startContinuousStreamingRx()
+{
+    // Stop any existing streaming
+    stopContinuousStreamingRx();
+    
+    // Reset statistics
+    streamingRxCount = 0;
+    streamingRxErrors = 0;
+    
+    // Start continuous streaming
+    continuousStreamingRx = true;
+    
+    if (debugEnabled) {
+        sendStringToDebugUart("Started continuous RX streaming\n");
+    }
+    
+    return true;
+}
+
+void CC1200::stopContinuousStreamingTx()
+{
+    continuousStreamingTx = false;
+    
+    if (debugEnabled) {
+        char msg[128];
+        snprintf(msg, sizeof(msg), "Stopped continuous TX streaming (sent: %lu, errors: %lu)\n", 
+                streamingTxCount, streamingTxErrors);
+        sendStringToDebugUart(std::string(msg));
+    }
+}
+
+void CC1200::stopContinuousStreamingRx()
+{
+    continuousStreamingRx = false;
+    
+    if (debugEnabled) {
+        char msg[128];
+        snprintf(msg, sizeof(msg), "Stopped continuous RX streaming (received: %lu, errors: %lu)\n", 
+                streamingRxCount, streamingRxErrors);
+        sendStringToDebugUart(std::string(msg));
+    }
+}
+
+void CC1200::getContinuousStreamingStats(uint32_t& txCount, uint32_t& rxCount, 
+                                       uint32_t& txErrors, uint32_t& rxErrors)
+{
+    txCount = streamingTxCount;
+    rxCount = streamingRxCount;
+    txErrors = streamingTxErrors;
+    rxErrors = streamingRxErrors;
+}
+
+void CC1200::processContinuousStreaming()
+{
+    // Process continuous TX streaming
+    if (continuousStreamingTx && streamingTxPatternLen > 0) {
+        // Check if we can write more data
+        size_t txFifoLen = getTXFIFOLen();
+        size_t availableSpace = CC1200_FIFO_SIZE - txFifoLen;
+        
+        // Only write if we have significant space available
+        if (availableSpace >= streamingTxPatternLen + 10) {
+            size_t bytesWritten = writeStreamDMA((const char*)streamingTxPattern, streamingTxPatternLen);
+            
+            if (bytesWritten > 0) {
+                streamingTxCount++;
+                
+                // Periodic debug output (every 100 packets)
+                if (debugEnabled && (streamingTxCount % 100) == 0) {
+                    char msg[64];
+                    snprintf(msg, sizeof(msg), "Continuous TX: %lu packets sent\n", streamingTxCount);
+                    sendStringToDebugUart(std::string(msg));
+                }
+            } else {
+                streamingTxErrors++;
+            }
+        }
+    }
+    
+    // Process continuous RX streaming
+    if (continuousStreamingRx) {
+        // Check if we have data available
+        size_t rxFifoLen = getRXFIFOLen();
+        
+        if (rxFifoLen > 0) {
+            char buffer[128];
+            size_t bytesRead = readStreamDMA(buffer, sizeof(buffer));
+            
+            if (bytesRead > 0) {
+                streamingRxCount++;
+                
+                // Periodic debug output (every 100 packets)
+                if (debugEnabled && (streamingRxCount % 100) == 0) {
+                    char msg[64];
+                    snprintf(msg, sizeof(msg), "Continuous RX: %lu packets received\n", streamingRxCount);
+                    sendStringToDebugUart(std::string(msg));
+                }
+            } else {
+                streamingRxErrors++;
+            }
+        }
+    }
+}

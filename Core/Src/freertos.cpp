@@ -289,21 +289,30 @@ void StartTask02(Globals* globals)
 void StartTask03(Globals* globals)
 {
   /* USER CODE BEGIN StartTask03 */
-  // This task handles CC1200 transmission
+  // This task handles CC1200 transmission and continuous streaming
   
   /* Infinite loop */
   for(;;)
   {
-    osDelay(10); // 10ms delay
+    osDelay(5); // 5ms delay for faster streaming processing
     
-    // Get the Radio instance
+    // Get the CC1200 instance
     CC1200* cc1200 = globals->getCC1200();
     if (cc1200 != nullptr) {
-      // Check if there's data to transmit from a queue or buffer
-      // For now, this is handled by the VCP Menu commands
+      // Process continuous streaming
+      cc1200->processContinuousStreaming();
       
-      // Update TX LED based on CC1200 state
-      // This will be handled by the VCP Menu for now
+      // Update TX LED based on streaming state
+      if (cc1200->isContinuousStreamingTx()) {
+        // Blink TX LED during continuous transmission
+        static uint32_t lastBlink = 0;
+        if (osKernelGetTickCount() - lastBlink > 100) { // 100ms blink rate
+          static uint8_t ledState = 0;
+          globals->setTxLED(ledState);
+          ledState = !ledState;
+          lastBlink = osKernelGetTickCount();
+        }
+      }
     }
   }
   /* USER CODE END StartTask03 */
@@ -319,21 +328,30 @@ void StartTask03(Globals* globals)
 void StartTask04(Globals* globals)
 {
   /* USER CODE BEGIN StartTask04 */
-  // This task handles CC1200 reception
+  // This task handles CC1200 reception and continuous streaming
   
   /* Infinite loop */
   for(;;)
   {
-    osDelay(10); // 10ms delay
+    osDelay(5); // 5ms delay for faster streaming processing
     
-    // Get the Radio instance
+    // Get the CC1200 instance
     CC1200* cc1200 = globals->getCC1200();
     if (cc1200 != nullptr) {
-      // Check for received data
-      // For now, this is handled by the VCP Menu commands
+      // Continuous streaming is already processed in Task03
+      // This task focuses on RX LED indication
       
-      // Update RX LED based on CC1200 state
-      // This will be handled by the VCP Menu for now
+      // Update RX LED based on streaming state
+      if (cc1200->isContinuousStreamingRx()) {
+        // Blink RX LED during continuous reception
+        static uint32_t lastBlink = 0;
+        if (osKernelGetTickCount() - lastBlink > 100) { // 100ms blink rate
+          static uint8_t ledState = 0;
+          globals->setRxLED(ledState);
+          ledState = !ledState;
+          lastBlink = osKernelGetTickCount();
+        }
+      }
     }
   }
   /* USER CODE END StartTask04 */

@@ -121,6 +121,18 @@ private:
     void cmdSysInfo(int argc, char* argv[]);
     void cmdRadioDebugOn(int argc, char* argv[]);
     void cmdRadioDebugOff(int argc, char* argv[]);
+    
+    // DMA command handlers
+    void cmdRadioTXDMA(int argc, char* argv[]);
+    void cmdRadioRXDMA(int argc, char* argv[]);
+    void cmdRadioStreamTXDMA(int argc, char* argv[]);
+    void cmdRadioStreamRXDMA(int argc, char* argv[]);
+    
+    // Continuous streaming command handlers
+    void cmdRadioStreamStartTX(int argc, char* argv[]);
+    void cmdRadioStreamStartRX(int argc, char* argv[]);
+    void cmdRadioStreamStop(int argc, char* argv[]);
+    void cmdRadioStreamStats(int argc, char* argv[]);
 
 };
 
