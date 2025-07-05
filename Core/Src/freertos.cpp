@@ -28,7 +28,7 @@
 #include "iwdg.h"
 #include "usb_device.h"
 #include "globals.h"
-#include "Radio.h"
+#include "CC1200_HAL.h"
 #include "VCPMenu.h"
 /* USER CODE END Includes */
 
@@ -51,6 +51,7 @@
 /* USER CODE BEGIN Variables */
 // Pointer to the globals object passed from main
 static Globals* g_globals = nullptr;
+// Radio class removed - using direct CC1200 access through globals
 
 // VCP Menu instance
 static VCPMenu* g_vcpMenu = nullptr;
@@ -143,6 +144,7 @@ void MX_FREERTOS_Init(Globals* globals) {
   // Store the globals pointer for use in this file
   g_globals = globals;
   /* USER CODE BEGIN Init */
+  // Radio class removed - initialization handled in globals->initCC1200()
 
   /* USER CODE END Init */
   /* Create the mutex(es) */
@@ -222,7 +224,7 @@ void StartDefaultTask(Globals* globals)
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN StartDefaultTask */
   // Initialize the Radio
-  if (!globals->initRadio()) {
+  if (!globals->initCC1200()) {
     // Radio initialization failed
     // Flash service LED rapidly to indicate error
     for (int i = 0; i < 10; i++) {
@@ -287,7 +289,7 @@ void StartTask02(Globals* globals)
 void StartTask03(Globals* globals)
 {
   /* USER CODE BEGIN StartTask03 */
-  // This task handles radio transmission
+  // This task handles CC1200 transmission
   
   /* Infinite loop */
   for(;;)
@@ -295,12 +297,12 @@ void StartTask03(Globals* globals)
     osDelay(10); // 10ms delay
     
     // Get the Radio instance
-    Radio* radio = globals->getRadio();
-    if (radio != nullptr) {
+    CC1200* cc1200 = globals->getCC1200();
+    if (cc1200 != nullptr) {
       // Check if there's data to transmit from a queue or buffer
       // For now, this is handled by the VCP Menu commands
       
-      // Update TX LED based on radio state
+      // Update TX LED based on CC1200 state
       // This will be handled by the VCP Menu for now
     }
   }
@@ -317,7 +319,7 @@ void StartTask03(Globals* globals)
 void StartTask04(Globals* globals)
 {
   /* USER CODE BEGIN StartTask04 */
-  // This task handles radio reception
+  // This task handles CC1200 reception
   
   /* Infinite loop */
   for(;;)
@@ -325,12 +327,12 @@ void StartTask04(Globals* globals)
     osDelay(10); // 10ms delay
     
     // Get the Radio instance
-    Radio* radio = globals->getRadio();
-    if (radio != nullptr) {
+    CC1200* cc1200 = globals->getCC1200();
+    if (cc1200 != nullptr) {
       // Check for received data
       // For now, this is handled by the VCP Menu commands
       
-      // Update RX LED based on radio state
+      // Update RX LED based on CC1200 state
       // This will be handled by the VCP Menu for now
     }
   }

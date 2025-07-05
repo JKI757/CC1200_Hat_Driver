@@ -20,14 +20,10 @@
 #include <cinttypes>
 #include <cmath>
 #include <array>
+#include <cstring>
 
-// Debug macro
-#if CC1200_DEBUG
-#define cc1200DebugPrintf(...) { if(debugStream != nullptr) (void)fprintf(debugStream, __VA_ARGS__); }
-#else
-#define cc1200DebugPrintf(...) // empty
-#endif
 
+#define CC1200_DEBUG 1
 // miscellaneous constants
 #define CC1200_READ (1 << 7) // SPI initial byte flag indicating read
 #define CC1200_WRITE 0 // SPI initial byte flag indicating write
@@ -92,13 +88,14 @@ const size_t maxValue24Bits = constexpr_pow(2, 24) - 1;
 CC1200::CC1200(SPI_HandleTypeDef* hspi_handle, 
                GPIO_TypeDef* cs_port, uint16_t cs_pin,
                GPIO_TypeDef* rst_port, uint16_t rst_pin,
-               FILE* _debugStream, bool _isCC1201) :
+               std::function<void(const std::string&)> _sendStringToDebugUart, 
+               bool _isCC1201) :
     hspi(hspi_handle),
     csPort(cs_port),
     csPin(cs_pin),
     rstPort(rst_port),
     rstPin(rst_pin),
-    debugStream(_debugStream),
+    sendStringToDebugUart(_sendStringToDebugUart),
     isCC1201(_isCC1201)
 {
     // Initialize CS pin as output and set it high (deselected)
@@ -123,7 +120,21 @@ uint8_t CC1200::spiTransfer(uint8_t data)
 {
     uint8_t rx_data;
     HAL_SPI_TransmitReceive(hspi, &data, &rx_data, 1, HAL_MAX_DELAY);
+    
+    // Log SPI data if debug is enabled
+    if (debugEnabled) {
+        char buffer[50];
+        snprintf(buffer, sizeof(buffer), "SPI: TX=0x%02X RX=0x%02X\r\n", data, rx_data);
+        sendStringToDebugUart(std::string(buffer));
+    }
+    
     return rx_data;
+}
+
+void CC1200::reset(){
+	HAL_GPIO_WritePin(rstPort, rstPin, GPIO_PIN_RESET);
+    HAL_Delay(1); // 1ms delay
+    HAL_GPIO_WritePin(rstPort, rstPin, GPIO_PIN_SET);
 }
 
 bool CC1200::begin()
@@ -146,7 +157,7 @@ bool CC1200::begin()
 
         if(HAL_GetTick() - startTime > resetTimeout)
         {
-            cc1200DebugPrintf("Timeout waiting for ready response from CC1200\n");
+            sendStringToDebugUart("Timeout waiting for ready response from CC1200\n");
             break;
         }
     }
@@ -154,15 +165,20 @@ bool CC1200::begin()
     // read ID register
     uint8_t partNumber = readRegister(ExtRegister::PARTNUMBER);
     uint8_t partVersion = readRegister(ExtRegister::PARTVERSION);
+    // Commented out to fix unused variable warning
 
     uint8_t expectedPartNumber = isCC1201 ? CC1201_PART_NUMBER : CC1200_PART_NUMBER;
     if(partNumber != expectedPartNumber)
     {
-        cc1200DebugPrintf("Read incorrect part number 0x%" PRIx8 " from CC1200, expected 0x%" PRIx8 "\n", partNumber, expectedPartNumber);
+        char errorMsg[128];
+        snprintf(errorMsg, sizeof(errorMsg), "Read incorrect part number 0x%02X from CC1200, expected 0x%02X\n", partNumber, expectedPartNumber);
+        sendStringToDebugUart(std::string(errorMsg));
         return false;
     }
 
-    cc1200DebugPrintf("Detected CC1200, Part Number 0x%" PRIx8 ", Hardware Version %" PRIx8 "\n", partNumber, partVersion);
+    char infoMsg[128];
+    snprintf(infoMsg, sizeof(infoMsg), "Detected CC1200, Part Number 0x%02X, Hardware Version %02X\n", partNumber, partVersion);
+    sendStringToDebugUart(std::string(infoMsg));
 
     // Set packet format settings for this driver
     // enable CRC but disable status bytes
@@ -234,16 +250,22 @@ bool CC1200::enqueuePacket(char const* data, size_t len)
     deselect();
 
 #if CC1200_DEBUG
-    cc1200DebugPrintf("Wrote packet of data length %zu:", len);
+    char msg[64];
+    snprintf(msg, sizeof(msg), "Wrote packet of data length %zu:", len);
+    sendStringToDebugUart(std::string(msg));
     if(_packetMode == PacketMode::VARIABLE_LENGTH)
     {
-        cc1200DebugPrintf(" %02" PRIx8, static_cast<uint8_t>(len));
+        char lenMsg[16];
+        snprintf(lenMsg, sizeof(lenMsg), " %02X", static_cast<uint8_t>(len));
+        sendStringToDebugUart(std::string(lenMsg));
     }
     for(size_t byteIndex = 0; byteIndex < len; ++byteIndex)
     {
-        cc1200DebugPrintf(" %02" PRIx8, static_cast<uint8_t>(data[byteIndex]));
+        char byteMsg[16];
+        snprintf(byteMsg, sizeof(byteMsg), " %02X", static_cast<uint8_t>(data[byteIndex]));
+        sendStringToDebugUart(std::string(byteMsg));
     }
-    cc1200DebugPrintf("\n");
+    sendStringToDebugUart("\n");
 #endif
 
     return true;
@@ -800,7 +822,9 @@ void CC1200::setFSKDeviation(float deviation)
     
     // Calculate and store the actual deviation
     float actualDeviation = static_cast<float>(devMInt) * std::pow(2.0f, devE) * CC1200_OSC_FREQ / 524288.0f;
-    cc1200DebugPrintf("Set FSK deviation to %.2f Hz (requested %.2f Hz)\n", actualDeviation, deviation);
+    char devMsg[128];
+    snprintf(devMsg, sizeof(devMsg), "Set FSK deviation to %.2f Hz (requested %.2f Hz)\n", actualDeviation, deviation);
+    sendStringToDebugUart(std::string(devMsg));
 }
 /*
  * Copyright (c) 2019-2023 USC Rocket Propulsion Lab
@@ -859,7 +883,9 @@ void CC1200::setSymbolRate(float symbolRateHz)
     symbolRate1 |= (srE << SYMBOL_RATE1_SRATE_E); // Set new SRATE_E bits
     writeRegister(Register::SYMBOL_RATE1, symbolRate1);
     
-    cc1200DebugPrintf("Set symbol rate to %.2f Hz (requested %.2f Hz)\n", actualSymbolRate, symbolRateHz);
+    char srMsg[128];
+    snprintf(srMsg, sizeof(srMsg), "Set symbol rate to %.2f Hz (requested %.2f Hz)\n", actualSymbolRate, symbolRateHz);
+    sendStringToDebugUart(std::string(srMsg));
 }
 
 // helper function for power setting
@@ -891,7 +917,9 @@ void CC1200::setOutputPower(float outPower)
     // Update the PA_CFG1 register
     writeRegister(Register::PA_CFG1, paValue);
     
-    cc1200DebugPrintf("Set output power to %.2f dBm (register value: 0x%02X)\n", outPower, paValue);
+    char powerMsg[128];
+    snprintf(powerMsg, sizeof(powerMsg), "Set output power to %.2f dBm (register value: 0x%02X)\n", outPower, paValue);
+    sendStringToDebugUart(std::string(powerMsg));
 }
 
 void CC1200::setASKPowers(float maxPower, float minPower)
@@ -908,7 +936,9 @@ void CC1200::setASKPowers(float maxPower, float minPower)
     // The ASK_CFG register contains a 6-bit power level field
     writeRegister(Register::ASK_CFG, minPaValue);
     
-    cc1200DebugPrintf("Set ASK powers to %.2f dBm (max) and %.2f dBm (min)\n", maxPower, minPower);
+    char askMsg[128];
+    snprintf(askMsg, sizeof(askMsg), "Set ASK powers to %.2f dBm (max) and %.2f dBm (min)\n", maxPower, minPower);
+    sendStringToDebugUart(std::string(askMsg));
 }
 
 void CC1200::setRadioFrequency(Band band, float frequencyHz)
@@ -1012,7 +1042,9 @@ void CC1200::setRadioFrequency(Band band, float frequencyHz)
             break;
     }
     
-    cc1200DebugPrintf("Set radio frequency to %.2f Hz (requested %.2f Hz)\n", actualFrequency, frequencyHz);
+    char freqMsg[128];
+    snprintf(freqMsg, sizeof(freqMsg), "Set radio frequency to %.2f Hz (requested %.2f Hz)\n", actualFrequency, frequencyHz);
+    sendStringToDebugUart(std::string(freqMsg));
 }
 
 // helper function for setRXFilterBandwidth:
@@ -1068,7 +1100,9 @@ void CC1200::setRXFilterBandwidth(float bandwidthHz, bool preferHigherCICDec)
     // Store the current RX bandwidth
     currentRXBandwidth = bestBandwidth;
     
-    cc1200DebugPrintf("Set RX filter bandwidth to %.2f Hz (requested %.2f Hz)\n", bestBandwidth, bandwidthHz);
+    char bwMsg[128];
+    snprintf(bwMsg, sizeof(bwMsg), "Set RX filter bandwidth to %.2f Hz (requested %.2f Hz)\n", bestBandwidth, bandwidthHz);
+    sendStringToDebugUart(std::string(bwMsg));
 }
 
 void CC1200::configureDCFilter(bool enableAutoFilter, uint8_t settlingCfg, uint8_t cutoffCfg)

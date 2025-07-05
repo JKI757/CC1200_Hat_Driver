@@ -33,8 +33,9 @@
 
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
-#include "Radio.h"
-
+#include "CC1200_HAL.h"
+#include <string>
+#include <deque>
 /**
  * @brief  Globals class to hold peripheral handles and provide access methods
  */
@@ -54,11 +55,6 @@ public:
      */
     ~Globals();
 
-    /**
-     * @brief  Initialize the Radio
-     * @retval true if initialization was successful
-     */
-    bool initRadio();
 
     /**
      * @brief  Get the UART handle
@@ -79,10 +75,10 @@ public:
     SPI_HandleTypeDef* getSPI() { return spi; }
 
     /**
-     * @brief  Get the Radio instance
-     * @retval Radio instance
+     * @brief  Get the CC1200 instance
+     * @retval CC1200 instance
      */
-    Radio* getRadio() { return radio; }
+    CC1200* getCC1200() { return cc1200; }
 
     /**
      * @brief  Refresh the watchdog
@@ -108,9 +104,37 @@ public:
     void setTxLED(uint8_t state);
 
     /**
+     * @brief  Initialize the CC1200 radio
+     * @retval true if successful, false otherwise
+     */
+    bool initCC1200();
+    
+    /**
      * @brief  Reset the CC1200 radio
      */
     void resetCC1200();
+
+    void sendUART(UART_HandleTypeDef* uart, uint8_t* buf, uint16_t len);
+	  void sendUSB(uint8_t* buf, uint16_t len);
+	  void sendUART(UART_HandleTypeDef* uart, std::string s);
+	  void sendDebugUART(std::string s);
+
+	  void sendDebugUSB(std::string s);
+
+	  void setDebugUART(UART_HandleTypeDef* uart);
+	  void displayNextDebugMessage();
+	  void sendUSBNextDebugMessage();
+
+	std::string buf_to_string(uint8_t* buf, int len);
+
+	void addDebugMessage(std::string s);
+	void addDebugMessage(uint8_t *buf, int len);
+	std::string getHextoStringDebugMessage(uint64_t s);
+	std::string getBintoStringDebugMessage(uint64_t s);
+
+	std::string getNextDebugMessage();
+	int getNumberOfDebugMessages();
+
 
 private:
     // Peripheral handle pointers
@@ -119,11 +143,13 @@ private:
     SPI_HandleTypeDef* spi;
     GPIO_TypeDef* LedGPIO;
     uint16_t LedPin;
-    GPIO_TypeDef* KeyButtonGPIO;
-    uint16_t KeyButtonPin;
     
-    // Radio instance
-    Radio* radio;
+    // CC1200 radio instance
+    CC1200* cc1200;
+    
+    UART_HandleTypeDef* debugUart;
+    std::deque<std::string> debugDeque;
+
 };
 
 /* USER CODE END ET */

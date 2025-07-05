@@ -106,6 +106,22 @@ private:
     void cmdSetFreq(int argc, char* argv[]);
     void cmdSetRate(int argc, char* argv[]);
     void cmdReset(int argc, char* argv[]);
+    
+    // New radio command handlers
+    void cmdRadioInit(int argc, char* argv[]);
+    void cmdRadioLQI(int argc, char* argv[]);
+    void cmdRadioRSSI(int argc, char* argv[]);
+    void cmdRadioRX(int argc, char* argv[]);
+    void cmdRadioStatus(int argc, char* argv[]);
+    void cmdRadioStreamRX(int argc, char* argv[]);
+    void cmdRadioStreamTX(int argc, char* argv[]);
+    void cmdRadioTX(int argc, char* argv[]);
+    void cmdRadioVersion(int argc, char* argv[]);
+    void cmdRestart(int argc, char* argv[]);
+    void cmdSysInfo(int argc, char* argv[]);
+    void cmdRadioDebugOn(int argc, char* argv[]);
+    void cmdRadioDebugOff(int argc, char* argv[]);
+
 };
 
 // Global callback function for USB CDC reception

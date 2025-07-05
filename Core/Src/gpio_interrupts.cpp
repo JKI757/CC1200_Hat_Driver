@@ -1,6 +1,5 @@
 #include "main.h"
 #include "globals.h"
-#include "Radio.h"
 
 // External globals instance
 extern Globals* globals;
@@ -15,10 +14,11 @@ extern "C" void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     if (GPIO_Pin == CC_GPIO0_Pin || GPIO_Pin == CC_GPIO2_Pin || GPIO_Pin == CC_GPIO3_Pin) {
         // Get the Radio instance
         if (globals != nullptr) {
-            Radio* radio = globals->getRadio();
-            if (radio != nullptr) {
+            CC1200* cc1200 = globals->getCC1200();
+            if (cc1200 != nullptr) {
                 // Handle the interrupt in the Radio class
-                radio->handleGPIOInterrupt(GPIO_Pin);
+                // Handle CC1200 GPIO interrupt directly
+                // TODO: Add CC1200 GPIO interrupt handling if needed
             }
         }
     }

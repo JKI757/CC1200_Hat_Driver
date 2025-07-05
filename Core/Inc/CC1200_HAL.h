@@ -20,7 +20,8 @@
 #include "stm32f4xx_hal.h"
 #include <cstdint>
 #include <chrono>
-#include <cstdio>
+#include <functional>
+#include <string>
 
 /**
  *  Driver for the CC1200 radio communications IC using STM32 HAL.
@@ -318,6 +319,8 @@ private:
     // chip data variables
     bool chipReady = false;
     State state = State::IDLE;
+    // Debug function (must be declared before isCC1201 for initialization order)
+    std::function<void(const std::string&)> sendStringToDebugUart;
     bool isCC1201;
 
     // current state variables
@@ -329,6 +332,10 @@ private:
 
     // Status byte from the last SPI transaction
     uint8_t lastStatus = 0;
+    
+    // Debug flag for SPI communication
+    bool debugEnabled = false;
+
 
     // Helper functions
     void loadStatusByte(uint8_t status);
@@ -350,8 +357,13 @@ public:
     CC1200(SPI_HandleTypeDef* hspi_handle, 
            GPIO_TypeDef* cs_port, uint16_t cs_pin,
            GPIO_TypeDef* rst_port, uint16_t rst_pin,
-           FILE* _debugStream = nullptr, bool _isCC1201 = false);
+           std::function<void(const std::string&)> _sendStringToDebugUart, 
+           bool _isCC1201 = false);
 
+    /**
+     * Reset the CC1200 chip
+     */
+    void reset();
     /**
      * Initialize the CC1200 chip
      * @return true if initialization was successful
@@ -688,6 +700,22 @@ public:
      * Update the internal state
      */
     void updateState();
+    
+    /**
+     * Enable SPI debug output
+     */
+    void enableDebug() { debugEnabled = true; }
+    
+    /**
+     * Disable SPI debug output
+     */
+    void disableDebug() { debugEnabled = false; }
+    
+    /**
+     * Check if debug is enabled
+     * @return true if debug is enabled, false otherwise
+     */
+    bool isDebugEnabled() const { return debugEnabled; }
 
     // Constants
     static constexpr float ASK_MIN_POWER_OFF = -17.5f;
