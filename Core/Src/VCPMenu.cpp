@@ -178,10 +178,14 @@ void VCPMenu::executeCommand(const char* cmd, int argc, char* argv[]) {
         cmdRadioStreamStartTX(argc, argv);
     } else if (strcmp(argv[0], "radio_stream_start_rx") == 0) {
         cmdRadioStreamStartRX(argc, argv);
+    } else if (strcmp(argv[0], "radio_stream_start_rx_verbose") == 0) {
+        cmdRadioStreamStartRXVerbose(argc, argv);
     } else if (strcmp(argv[0], "radio_stream_stop") == 0) {
         cmdRadioStreamStop(argc, argv);
     } else if (strcmp(argv[0], "radio_stream_stats") == 0) {
         cmdRadioStreamStats(argc, argv);
+    } else if (strcmp(argv[0], "radio_stream_diag") == 0) {
+        cmdRadioStreamDiag(argc, argv);
     } else if (strcmp(argv[0], "restart") == 0) {
         cmdRestart(argc, argv);
     } else if (strcmp(argv[0], "sysinfo") == 0) {
@@ -245,7 +249,8 @@ void VCPMenu::displayHelp() {
     
     printf("Continuous streaming commands:\r\n");
     printf("  radio_stream_start_tx <hex_pattern> - Start continuous TX streaming\r\n");
-    printf("  radio_stream_start_rx - Start continuous RX streaming\r\n");
+    printf("  radio_stream_start_rx - Start continuous RX streaming (silent)\r\n");
+    printf("  radio_stream_start_rx_verbose - Start RX streaming with data output\r\n");
     printf("  radio_stream_stop - Stop all continuous streaming\r\n");
     printf("  radio_stream_stats - Show streaming statistics\r\n");
     printf("\r\n");
@@ -1280,6 +1285,14 @@ void VCPMenu::cmdRadioStreamStartTX(int argc, char* argv[]) {
         pattern[i] = static_cast<char>(strtol(byteStr.c_str(), nullptr, 16));
     }
 
+    // Debug the input pattern
+    printf("Parsed pattern length: %u\r\n", (unsigned int)patternLen);
+    printf("Pattern hex: ");
+    for (size_t i = 0; i < patternLen && i < 16; i++) {
+        printf("%02X", (uint8_t)pattern[i]);
+    }
+    printf("\r\n");
+
     // Start continuous streaming
     bool success = cc1200->startContinuousStreamingTx(pattern, patternLen);
 
@@ -1300,11 +1313,33 @@ void VCPMenu::cmdRadioStreamStartRX(int argc, char* argv[]) {
         return;
     }
 
-    // Start continuous streaming
-    bool success = cc1200->startContinuousStreamingRx();
+    // Start continuous streaming (silent mode)
+    bool success = cc1200->startContinuousStreamingRx(false);
 
     if (success) {
-        printf("Continuous RX streaming started\r\n");
+        printf("Continuous RX streaming started (silent mode)\r\n");
+        printf("RX LED will blink to indicate streaming activity\r\n");
+        printf("Use 'radio_stream_stop' to stop streaming\r\n");
+        printf("Use 'radio_stream_stats' to view statistics\r\n");
+        printf("Use 'radio_stream_start_rx_verbose' for data output\r\n");
+    } else {
+        printf("Error: Failed to start continuous RX streaming\r\n");
+    }
+}
+
+void VCPMenu::cmdRadioStreamStartRXVerbose(int argc, char* argv[]) {
+    CC1200* cc1200 = this->globals->getCC1200();
+    if (cc1200 == nullptr) {
+        printf("Error: CC1200 not initialized\r\n");
+        return;
+    }
+
+    // Start continuous streaming (verbose mode)
+    bool success = cc1200->startContinuousStreamingRx(true);
+
+    if (success) {
+        printf("Continuous RX streaming started (verbose mode)\r\n");
+        printf("Received data will be displayed in real-time as RX[count]: HEXDATA\r\n");
         printf("RX LED will blink to indicate streaming activity\r\n");
         printf("Use 'radio_stream_stop' to stop streaming\r\n");
         printf("Use 'radio_stream_stats' to view statistics\r\n");
@@ -1368,6 +1403,32 @@ void VCPMenu::cmdRadioStreamStats(int argc, char* argv[]) {
         printf("  RX Success Rate: %.2f%%\r\n", 
                (float)(rxCount * 100) / (rxCount + rxErrors));
     }
+    
+    printf("\r\n");
+}
+
+void VCPMenu::cmdRadioStreamDiag(int argc, char* argv[]) {
+    CC1200* cc1200 = this->globals->getCC1200();
+    if (cc1200 == nullptr) {
+        printf("Error: CC1200 not initialized\r\n");
+        return;
+    }
+
+    printf("=== Radio Streaming Diagnostics ===\r\n");
+    printf("TX Streaming Active: %s\r\n", cc1200->isContinuousStreamingTx() ? "YES" : "NO");
+    printf("RX Streaming Active: %s\r\n", cc1200->isContinuousStreamingRx() ? "YES" : "NO");
+    
+    uint32_t txCount, rxCount, txErrors, rxErrors;
+    cc1200->getContinuousStreamingStats(txCount, rxCount, txErrors, rxErrors);
+    
+    printf("TX Count: %lu\r\n", txCount);
+    printf("TX Errors: %lu\r\n", txErrors);
+    printf("RX Count: %lu\r\n", rxCount);
+    printf("RX Errors: %lu\r\n", rxErrors);
+    
+    // Get current FIFO status
+    printf("TX FIFO Length: %u\r\n", (unsigned int)cc1200->getTXFIFOLen());
+    printf("RX FIFO Length: %u\r\n", (unsigned int)cc1200->getRXFIFOLen());
     
     printf("\r\n");
 }

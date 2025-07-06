@@ -60,28 +60,28 @@ static VCPMenu* g_vcpMenu = nullptr;
 osThreadId_t defaultTaskHandle;
 const osThreadAttr_t defaultTask_attributes = {
   .name = "defaultTask",
-  .stack_size = 128 * 4,
+  .stack_size = 512 * 4,  // Increased from 128*4 to 512*4 (2KB) for VCP menu processing
   .priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for myTask02 */
 osThreadId_t myTask02Handle;
 const osThreadAttr_t myTask02_attributes = {
   .name = "myTask02",
-  .stack_size = 128 * 4,
+  .stack_size = 256 * 4,  // Increased from 128*4 to 256*4 (1KB) for watchdog task
   .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for myTask03 */
 osThreadId_t myTask03Handle;
 const osThreadAttr_t myTask03_attributes = {
   .name = "myTask03",
-  .stack_size = 128 * 4,
+  .stack_size = 1024 * 4, // Increased from 128*4 to 1024*4 (4KB) for DMA streaming
   .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for myTask04 */
 osThreadId_t myTask04Handle;
 const osThreadAttr_t myTask04_attributes = {
   .name = "myTask04",
-  .stack_size = 128 * 4,
+  .stack_size = 512 * 4,  // Increased from 128*4 to 512*4 (2KB) for RX processing
   .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for myQueue01 */

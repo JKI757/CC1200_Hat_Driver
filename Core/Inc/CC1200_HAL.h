@@ -339,6 +339,7 @@ private:
     // DMA transfer state
     volatile bool dmaTransferComplete = false;
     volatile bool dmaTransferError = false;
+    volatile bool dmaTransferInProgress = false;
     
     // DMA buffers (must be aligned for DMA)
     uint8_t dmaTxBuffer[256] __attribute__((aligned(4)));
@@ -347,6 +348,7 @@ private:
     // Continuous streaming state
     volatile bool continuousStreamingTx = false;
     volatile bool continuousStreamingRx = false;
+    volatile bool verboseRxOutput = false;
     uint8_t streamingTxPattern[128];
     size_t streamingTxPatternLen = 0;
     uint32_t streamingTxCount = 0;
@@ -362,6 +364,8 @@ private:
     
     // DMA helper functions
     bool spiTransferDMA(uint8_t* txData, uint8_t* rxData, size_t len);
+    bool spiTransferDMANonBlocking(uint8_t* txData, uint8_t* rxData, size_t len);
+    bool isDMATransferComplete();
 
 public:
     /**
@@ -499,9 +503,10 @@ public:
 
     /**
      * Start continuous streaming reception
+     * @param verbose Enable verbose output of received data
      * @return true if continuous streaming started
      */
-    bool startContinuousStreamingRx();
+    bool startContinuousStreamingRx(bool verbose = false);
 
     /**
      * Stop continuous streaming transmission

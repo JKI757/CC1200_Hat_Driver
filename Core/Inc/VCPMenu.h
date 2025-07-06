@@ -131,8 +131,10 @@ private:
     // Continuous streaming command handlers
     void cmdRadioStreamStartTX(int argc, char* argv[]);
     void cmdRadioStreamStartRX(int argc, char* argv[]);
+    void cmdRadioStreamStartRXVerbose(int argc, char* argv[]);
     void cmdRadioStreamStop(int argc, char* argv[]);
     void cmdRadioStreamStats(int argc, char* argv[]);
+    void cmdRadioStreamDiag(int argc, char* argv[]);
 
 };
 

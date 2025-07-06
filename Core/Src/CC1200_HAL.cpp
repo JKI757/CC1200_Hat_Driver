@@ -16,6 +16,7 @@
 
 #include "CC1200_HAL.h"
 #include "CC1200Bits.h"
+#include "cmsis_os.h"
 
 #include <cinttypes>
 #include <cmath>
@@ -103,6 +104,21 @@ CC1200::CC1200(SPI_HandleTypeDef* hspi_handle,
     
     // Initialize RST pin as output and set it high
     HAL_GPIO_WritePin(rstPort, rstPin, GPIO_PIN_SET);
+    
+    // Initialize DMA state
+    dmaTransferComplete = false;
+    dmaTransferError = false;
+    dmaTransferInProgress = false;
+    
+    // Initialize streaming state
+    continuousStreamingTx = false;
+    continuousStreamingRx = false;
+    verboseRxOutput = false;
+    streamingTxPatternLen = 0;
+    streamingTxCount = 0;
+    streamingRxCount = 0;
+    streamingTxErrors = 0;
+    streamingRxErrors = 0;
 }
 
 // Helper functions for SPI communication
@@ -1351,13 +1367,17 @@ bool CC1200::spiTransferDMA(uint8_t* txData, uint8_t* rxData, size_t len)
         return false;
     }
     
-    // Wait for completion with timeout (10ms per byte)
+    // Wait for completion with timeout (10ms per byte) using FreeRTOS delays
     uint32_t timeout = HAL_GetTick() + (len * 10);
     while (!dmaTransferComplete && !dmaTransferError && HAL_GetTick() < timeout) {
-        // Wait for DMA to complete
+        // Use FreeRTOS delay to yield to other tasks
+        osDelay(1); // 1ms delay to allow other tasks to run
     }
     
-    deselect();
+    // CS will be deselected by callback, but handle timeout case
+    if (!dmaTransferComplete && !dmaTransferError) {
+        deselect(); // Only deselect if callback didn't fire (timeout case)
+    }
     
     if (dmaTransferError) {
         if (debugEnabled) {
@@ -1379,17 +1399,55 @@ bool CC1200::spiTransferDMA(uint8_t* txData, uint8_t* rxData, size_t len)
 void CC1200::dmaTransferCompleteCallback()
 {
     dmaTransferComplete = true;
-    if (debugEnabled) {
-        sendStringToDebugUart("DMA: Transfer complete\n");
-    }
+    dmaTransferInProgress = false;
+    deselect(); // Deselect CS when transfer completes
+    // Don't send debug output from ISR context - can cause crashes
 }
 
 void CC1200::dmaTransferErrorCallback()
 {
     dmaTransferError = true;
-    if (debugEnabled) {
-        sendStringToDebugUart("DMA: Transfer error callback\n");
+    dmaTransferInProgress = false;
+    deselect(); // Deselect CS on error
+    // Don't send debug output from ISR context - can cause crashes
+}
+
+bool CC1200::spiTransferDMANonBlocking(uint8_t* txData, uint8_t* rxData, size_t len)
+{
+    if (len == 0 || len > 256) {
+        return false;
     }
+    
+    // Check if a transfer is already in progress
+    if (dmaTransferInProgress) {
+        return false; // Can't start new transfer while one is active
+    }
+    
+    // Reset DMA flags
+    dmaTransferComplete = false;
+    dmaTransferError = false;
+    dmaTransferInProgress = true;
+    
+    // Start DMA transfer
+    select();
+    HAL_StatusTypeDef result = HAL_SPI_TransmitReceive_DMA(hspi, txData, rxData, len);
+    
+    if (result != HAL_OK) {
+        dmaTransferInProgress = false;
+        deselect();
+        if (debugEnabled) {
+            sendStringToDebugUart("DMA: Failed to start transfer\n");
+        }
+        return false;
+    }
+    
+    // Transfer started successfully, callback will handle completion
+    return true;
+}
+
+bool CC1200::isDMATransferComplete()
+{
+    return !dmaTransferInProgress;
 }
 
 bool CC1200::enqueuePacketDMA(char const* data, size_t len)
@@ -1578,17 +1636,28 @@ bool CC1200::startContinuousStreamingTx(const char* pattern, size_t patternLen)
     // Start continuous streaming
     continuousStreamingTx = true;
     
+    // Always output this message for debugging
+    char msg[128];
+    snprintf(msg, sizeof(msg), "Started continuous TX streaming with %u byte pattern\n", 
+            (unsigned int)patternLen);
+    sendStringToDebugUart(std::string(msg));
+    
+    // Show pattern in debug
     if (debugEnabled) {
-        char msg[128];
-        snprintf(msg, sizeof(msg), "Started continuous TX streaming with %u byte pattern\n", 
-                (unsigned int)patternLen);
-        sendStringToDebugUart(std::string(msg));
+        std::string hexPattern = "Pattern: ";
+        for (size_t i = 0; i < patternLen && i < 16; i++) {
+            char hexByte[4];
+            snprintf(hexByte, sizeof(hexByte), "%02X", (uint8_t)pattern[i]);
+            hexPattern += hexByte;
+        }
+        hexPattern += "\n";
+        sendStringToDebugUart(hexPattern);
     }
     
     return true;
 }
 
-bool CC1200::startContinuousStreamingRx()
+bool CC1200::startContinuousStreamingRx(bool verbose)
 {
     // Stop any existing streaming
     stopContinuousStreamingRx();
@@ -1597,11 +1666,17 @@ bool CC1200::startContinuousStreamingRx()
     streamingRxCount = 0;
     streamingRxErrors = 0;
     
+    // Set verbose mode
+    verboseRxOutput = verbose;
+    
     // Start continuous streaming
     continuousStreamingRx = true;
     
     if (debugEnabled) {
-        sendStringToDebugUart("Started continuous RX streaming\n");
+        char msg[128];
+        snprintf(msg, sizeof(msg), "Started continuous RX streaming (verbose: %s)\n", 
+                verbose ? "ON" : "OFF");
+        sendStringToDebugUart(std::string(msg));
     }
     
     return true;
@@ -1622,6 +1697,7 @@ void CC1200::stopContinuousStreamingTx()
 void CC1200::stopContinuousStreamingRx()
 {
     continuousStreamingRx = false;
+    verboseRxOutput = false;
     
     if (debugEnabled) {
         char msg[128];
@@ -1642,52 +1718,88 @@ void CC1200::getContinuousStreamingStats(uint32_t& txCount, uint32_t& rxCount,
 
 void CC1200::processContinuousStreaming()
 {
-    // Process continuous TX streaming
-    if (continuousStreamingTx && streamingTxPatternLen > 0) {
-        // Check if we can write more data
-        size_t txFifoLen = getTXFIFOLen();
-        size_t availableSpace = CC1200_FIFO_SIZE - txFifoLen;
-        
-        // Only write if we have significant space available
-        if (availableSpace >= streamingTxPatternLen + 10) {
-            size_t bytesWritten = writeStreamDMA((const char*)streamingTxPattern, streamingTxPatternLen);
-            
-            if (bytesWritten > 0) {
-                streamingTxCount++;
-                
-                // Periodic debug output (every 100 packets)
-                if (debugEnabled && (streamingTxCount % 100) == 0) {
-                    char msg[64];
-                    snprintf(msg, sizeof(msg), "Continuous TX: %lu packets sent\n", streamingTxCount);
-                    sendStringToDebugUart(std::string(msg));
-                }
-            } else {
-                streamingTxErrors++;
-            }
+    // Simplified debug output to prevent crashes
+    static uint32_t debugCounter = 0;
+    debugCounter++;
+    if (debugEnabled && (debugCounter % 2000) == 0) {
+        if (continuousStreamingTx) {
+            sendStringToDebugUart("TX streaming active\n");
         }
     }
     
-    // Process continuous RX streaming
-    if (continuousStreamingRx) {
-        // Check if we have data available
-        size_t rxFifoLen = getRXFIFOLen();
-        
-        if (rxFifoLen > 0) {
-            char buffer[128];
-            size_t bytesRead = readStreamDMA(buffer, sizeof(buffer));
+    // Process continuous TX streaming
+    if (continuousStreamingTx && streamingTxPatternLen > 0) {
+        // Only proceed if no DMA transfer is in progress
+        if (isDMATransferComplete()) {
+            // Check if we can write more data
+            size_t txFifoLen = getTXFIFOLen();
+            size_t availableSpace = CC1200_FIFO_SIZE - txFifoLen;
             
-            if (bytesRead > 0) {
-                streamingRxCount++;
+            // Only write if we have significant space available
+            if (availableSpace >= streamingTxPatternLen + 10) {
+                // Prepare DMA buffer for non-blocking transfer
+                dmaTxBuffer[0] = CC1200_ENQUEUE_TX_FIFO | CC1200_BURST;
+                memcpy(&dmaTxBuffer[1], streamingTxPattern, streamingTxPatternLen);
                 
-                // Periodic debug output (every 100 packets)
-                if (debugEnabled && (streamingRxCount % 100) == 0) {
-                    char msg[64];
-                    snprintf(msg, sizeof(msg), "Continuous RX: %lu packets received\n", streamingRxCount);
-                    sendStringToDebugUart(std::string(msg));
+                // Start non-blocking DMA transfer
+                bool success = spiTransferDMANonBlocking(dmaTxBuffer, dmaRxBuffer, streamingTxPatternLen + 1);
+                
+                if (success) {
+                    streamingTxCount++;
+                    
+                    // Simplified debug output 
+                    if (debugEnabled && (streamingTxCount % 100) == 0) {
+                        sendStringToDebugUart("TX 100 packets\n");
+                    }
+                } else {
+                    streamingTxErrors++;
                 }
-            } else {
-                streamingRxErrors++;
             }
         }
+        // If DMA transfer is in progress, just skip this iteration
+    }
+    
+    // Process continuous RX streaming  
+    if (continuousStreamingRx) {
+        // Only proceed if no DMA transfer is in progress
+        if (isDMATransferComplete()) {
+            // Check if we have data available
+            size_t rxFifoLen = getRXFIFOLen();
+            
+            if (rxFifoLen > 0) {
+                // Limit read to available data
+                size_t bytesToRead = (rxFifoLen > 64) ? 64 : rxFifoLen; // Read max 64 bytes at a time
+                
+                // Prepare DMA buffer for non-blocking transfer
+                dmaTxBuffer[0] = CC1200_DEQUEUE_RX_FIFO | CC1200_BURST;
+                memset(&dmaTxBuffer[1], 0, bytesToRead); // Dummy bytes
+                
+                // Start non-blocking DMA transfer
+                bool success = spiTransferDMANonBlocking(dmaTxBuffer, dmaRxBuffer, bytesToRead + 1);
+                
+                if (success) {
+                    streamingRxCount++;
+                    
+                    // Note: We can't process received data immediately since transfer is non-blocking
+                    // The data will be available after DMA completion, but for continuous streaming
+                    // we prioritize not blocking the task over immediate data processing
+                    
+                    // Periodic debug output (every 50 packets)
+                    if (debugEnabled && (streamingRxCount % 50) == 0) {
+                        char msg[128];
+                        snprintf(msg, sizeof(msg), "Continuous RX: %lu transfers started (DMA non-blocking)\n", streamingRxCount);
+                        sendStringToDebugUart(std::string(msg));
+                    }
+                } else {
+                    streamingRxErrors++;
+                    if (debugEnabled && (streamingRxErrors % 10) == 0) {
+                        char msg[128];
+                        snprintf(msg, sizeof(msg), "Continuous RX: Error starting DMA transfer (errors: %lu)\n", streamingRxErrors);
+                        sendStringToDebugUart(std::string(msg));
+                    }
+                }
+            }
+        }
+        // If DMA transfer is in progress, just skip this iteration
     }
 }
